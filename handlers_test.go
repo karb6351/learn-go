@@ -132,6 +132,16 @@ func TestUpdateBookHandler(t *testing.T) {
 
 		},
 		{
+			name: "year too old",
+			seed: func(s *BookStore) {
+				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			},
+			path:       "/books/1",
+			body:       `{"title":"B","author":"Y","year":3000}`,
+			wantStatus: http.StatusUnprocessableEntity, // Laravel style：validation 一律 422
+
+		},
+		{
 			name: "id hijack",
 			seed: func(s *BookStore) {
 				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})

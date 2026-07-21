@@ -1,10 +1,28 @@
 package main
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 )
+
+var errorTagMessages = map[string]string{
+	"required": "The {field} is required.",
+	"min":      "The {field} must be at least {value} characters.",
+	"max":      "The {field} must be at most {value} characters.",
+	"email":    "The {field} must be a valid email address.",
+	"url":      "The {field} must be a valid URL.",
+	"ip":       "The {field} must be a valid IP address.",
+	"gte":      "The {field} must be greater than or equal to {value}.",
+	"lte":      "The {field} must be less than or equal to {value}.",
+	"eq":       "The {field} must be equal to {value}.",
+	"ne":       "The {field} must be not equal to {value}.",
+	"gt":       "The {field} must be greater than {value}.",
+	"lt":       "The {field} must be less than {value}.",
+}
 
 // ErrorHandler 係全 API 嘅 error 出口（相當於 Laravel 嘅 Handler::render /
 // NestJS 嘅 exception filter）。Handler 唔再自己寫 error response，
@@ -40,7 +58,27 @@ func ErrorHandler() gin.HandlerFunc {
 		//   4. ErrBookNotFound 用返 errors.Is（sentinel 比對）
 		//
 		// 記住剷埋下面兩行 placeholder
-		_ = err
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "TODO: not translated yet"})
+		var validationErrors validator.ValidationErrors
+		var apiError *APIError
+		if errors.As(err, &validationErrors) {
+			errs := make(map[string][]string)
+			for _, fe := range validationErrors {
+				fieldName := strings.ToLower(fe.Field())
+				originalMessage, ok := errorTagMessages[fe.Tag()]
+				if !ok {
+					originalMessage = "The {field} is invalid."
+				}
+				fieldMessage := strings.Replace(originalMessage, "{value}", fe.Param(), 1)
+				fieldMessage = strings.Replace(fieldMessage, "{field}", fieldName, 1)
+				errs[fieldName] = append(errs[fieldName], fieldMessage)
+			}
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"message": "The given data was invalid.", "errors": errs})
+		} else if errors.Is(err, ErrBookNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"message": "book not found"})
+		} else if errors.As(err, &apiError) {
+			c.JSON(apiError.Status, gin.H{"message": apiError.Message})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		}
 	}
 }

@@ -8,40 +8,25 @@
 - [x] 第一章：基本 CRUD（model / in-memory store / 5 個 endpoints）
 - [x] 第二章：DTO 分離 + struct embedding（`BaseBook`）
 - [x] 第三章：Testing（table-driven / httptest / red-green）
-- [ ] **第四章：Error handling middleware（進行中 — 有未完成任務，睇下面）** ⬅ 而家喺呢度
+- [x] 第四章：Error handling middleware（translation switch + handler refactor，全綠 ✅）
+- [ ] **第 4.5 章：Generic error handling（進行中 — 收尾任務睇下面）** ⬅ 而家喺呢度
 - [ ] 第五章（未開始，任揀）：GORM + SQLite / Project layout / 其他 middleware
 
 ## ⚠️ 未完成任務（返嚟由呢度開始）
 
-而家 test suite 係 **刻意紅色** 狀態（red-green-refactor 嘅 red）：
+第四章已收貨。4.5 章已做咗：`errorTagMessages` map（`{field}`/`{value}` placeholder + comma-ok 兜底）、`APIError` type（`api_error.go`）+ middleware `errors.As` 分支、`BookParam` + `ShouldBindUri`（PUT/DELETE）。中途試過 `NotFoundError` embed `APIError` + store 回 HTTP-aware error，review 後倒返轉頭（layering + embedding≠inheritance，睇速查表）。
 
-```
-$ go test ./...
-FAIL: TestCreateBookValidation          status = 500, want 422
-FAIL: TestUpdateBookHandler/missing_author   status = 400, want 422
-```
+收尾任務（test 而家全綠，但有已知行為分歧未鎖 contract）：
 
-目標：實現 Laravel-style validation error contract，令兩個 test 轉綠。
+### 任務 1：統一 id validation
 
-### 任務 1：寫 `middleware.go` 入面個 translation switch
+而家 `GET /books/0` → 404（`GetBook` 用 `strconv.Atoi`）但 `DELETE /books/0` → 400（`BookParam` 嘅 `required` 當 0 = 冇提供，zero value 誤殺）。二揀一統一晒三個 endpoint；如果揀 `BookParam`，`required` 應改做 `min=1`，並改返句 error message（而家 0 嗰句 "id must be an integer" 係大話）。
 
-位置：`middleware.go` 嘅 TODO。目標 contract（Laravel style，validation 用 422）：
+### 任務 2：加 test 鎖住 id contract
 
-```json
-{
-  "message": "The given data was invalid.",
-  "errors": { "author": ["The author field is required."] }
-}
-```
+`/books/abc`（400）同 `/books/0`（跟任務 1 嘅決定）而家零 coverage — 行為分歧就係咁靜靜雞溜入嚟。落 table-driven cases。
 
-- validation error 用 `errors.As` 提取 `validator.ValidationErrors`（import `github.com/go-playground/validator/v10`），逐條 `fe.Field()`（記得轉細楷）+ `fe.Tag()`
-- `ErrBookNotFound` 用 `errors.Is` → 404 `{"message":"book not found"}`
-- 兜底 → 500 `{"message":"internal error"}`
-- 記得剷走 placeholder 嗰兩行
-
-### 任務 2：Refactor `UpdateBook`
-
-跟 `CreateBook`（已示範）嘅 pattern：error 唔再自己 `c.JSON`，改用 `c.Error(err)` + `c.Abort()` + `return`，交俾 middleware translate。之後可以順手 refactor 埋 `GetBook` / `DeleteBook`。
+### 任務 3（可選）：改寫 `middleware.go` 嘅 TODO 註解做完工版教學註解
 
 驗收：`go vet ./... && go test ./...` 全綠。
 
@@ -52,7 +37,8 @@ FAIL: TestUpdateBookHandler/missing_author   status = 400, want 422
 | `main.go` | wiring + `setupRouter()`（抽出嚟先測到） | NestJS module / TestingModule |
 | `book.go` | `BaseBook`/`Book` model + in-memory store (mutex) | Entity + Repository |
 | `handlers.go` | HTTP handlers + `BookInput` DTO | Controller + DTO |
-| `middleware.go` | `ErrorHandler()` — 全 API error 出口（施工中） | Laravel Handler::render / NestJS exception filter |
+| `middleware.go` | `ErrorHandler()` — 全 API error 出口（translation switch 完工） | Laravel Handler::render / NestJS exception filter |
+| `api_error.go` | `APIError`（status + message，HTTP 層先出世） | NestJS HttpException |
 | `*_test.go` | store unit tests + httptest handler tests | PHPUnit / Jest + supertest |
 
 跑 server：`go run .`（port 8089）；跑 test：`go test -v ./...`
@@ -70,9 +56,15 @@ FAIL: TestUpdateBookHandler/missing_author   status = 400, want 422
 
 **Error handling**
 - 冇 exception：`(value, error)` 雙回傳 + sentinel error（`ErrBookNotFound`）
-- `errors.Is`（係咪呢粒）vs `errors.As`（係咪呢類，提取出嚟用）
-- Handler 寫完 error response 記得 `return`（Gin 唔會自動停）
-- Panic 留俾 programmer bug；`gin.Default()` 有 Recovery middleware 兜底
+- `errors.Is`（係咪呢粒 = 身份 `==`）vs `errors.As`（係咪呢類 = concrete type 比對，再塞落你個變數所以要 `&`）
+- `errors.Is` 一定要同「共用嘅 sentinel 變數」比 — 即場 new 一粒內容一樣嘅嚟比永遠 false（教訓：`errors.Is(err, &NotFoundError{...})`）
+- 任何 named type 有 `Error() string` 就係 error（structural typing）— `ValidationErrors` 本身係 `[]FieldError` slice；對比 NestJS/Java 要明文 `extends`（nominal）
+- Validator 對每個 field fail-fast（第一個 fail 嘅 tag 就停），但 field 之間唔互相截停；`map[string][]string` 個 shape 係跟 contract（Laravel）唔係跟 validator 實現
+- 自定義 error type（`APIError` 揸 status+message）= Go 版 HttpException；但 embedding ≠ inheritance — `*NotFoundError` embed `APIError` 都唔會被 `errors.As(&apiErr)` 捉到，Go 砌 error 家族用 Unwrap chain 唔係 embedding（未實作，第日玩）
+- Layering：repository 唔應該識 HTTP — store 回 domain error（sentinel），HTTP status 翻譯係 middleware 嘅事（= Eloquent throw ModelNotFoundException，Handler::render 譯 404）
+- `binding:"required"` 對 int 嘅「冇提供」= zero value → `0` 被誤殺（zero value 哲學再現）；binding 世界嘅 comma-ok = pointer field（`*int`，nil = absent）
+- Map 讀 missing key 回 zero value（`""`）唔會出錯 — `errorTagMessages[tag]` 冇兜底就會回空 message，comma-ok 救返
+- Test 全綠 ≠ 冇問題：只證明「有承諾嘅嘢冇爛」，coverage gap 入面嘅行為可以靜靜雞變（`APIError` 一度全部跌落 500 都冇 test 出聲）
 
 **設計**
 - DTO 分離：`BookInput` 冇 ID field → id 騎劫「make invalid states unrepresentable」

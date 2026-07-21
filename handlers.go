@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -11,6 +10,10 @@ import (
 // BookHandler 揸住 store 嘅 reference。
 // 呢個就係 Go 版嘅 "constructor injection" —
 // 冇 DI container，直接喺 main() 度砌好傳入嚟。
+
+type BookParam struct {
+	ID int `uri:"id" binding:"required"`
+}
 type BookHandler struct {
 	store *BookStore
 }
@@ -50,17 +53,15 @@ func (h *BookHandler) ListBooks(c *gin.Context) {
 func (h *BookHandler) GetBook(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id must be an integer"})
+		c.Error(&APIError{Status: http.StatusBadRequest, Message: "id must be an integer"})
+		c.Abort()
 		return
 	}
 
 	book, err := h.store.Get(id)
 	if err != nil {
-		if errors.Is(err, ErrBookNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		c.Error(err)
+		c.Abort()
 		return
 	}
 
@@ -71,13 +72,19 @@ func (h *BookHandler) GetBook(c *gin.Context) {
 func (h *BookHandler) UpdateBook(c *gin.Context) {
 
 	var input BookInput
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id must be an integer"})
+	var paramInput BookParam
+
+	if err := c.ShouldBindUri(&paramInput); err != nil {
+		c.Error(&APIError{Status: http.StatusBadRequest, Message: "id must be an integer"})
+		c.Abort()
 		return
 	}
+
+	id := paramInput.ID
+
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.Error(err)
+		c.Abort()
 		return // Gin 唔會自動停，一定要自己 return！
 	}
 
@@ -86,11 +93,8 @@ func (h *BookHandler) UpdateBook(c *gin.Context) {
 	})
 
 	if err != nil {
-		if errors.Is(err, ErrBookNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		c.Error(err)
+		c.Abort()
 		return
 	}
 	c.JSON(http.StatusOK, updated)
@@ -98,18 +102,20 @@ func (h *BookHandler) UpdateBook(c *gin.Context) {
 
 // DELETE /books/:id
 func (h *BookHandler) DeleteBook(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id must be an integer"})
+
+	var paramInput BookParam
+
+	if err := c.ShouldBindUri(&paramInput); err != nil {
+		c.Error(&APIError{Status: http.StatusBadRequest, Message: "id must be an integer"})
+		c.Abort()
 		return
 	}
 
+	id := paramInput.ID
+
 	if err := h.store.Delete(id); err != nil {
-		if errors.Is(err, ErrBookNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		c.Error(err)
+		c.Abort()
 		return
 	}
 
