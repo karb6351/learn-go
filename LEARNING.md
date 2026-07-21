@@ -79,7 +79,13 @@
 - Test 承諾唔好 test 意外：assert contract（status、field 名），唔好 assert 措辭（change detector）
 - `go vet`：捉 mutex copy、Unmarshal 冇 `&` 等「compile 到但九成錯」嘅嘢，CI 必跑
 
+## 開波前復習（學生自己 flag 咗）
+
+- **`errors.Is` vs `errors.As` 未係 100% 明** — 復習方向：Is = 身份（`==` 比對同一粒 sentinel 變數）；As = 類型（沿 chain 搵 concrete type，搵到塞落你個變數所以要 `&`）。可以攞 project 入面三個真實用例行一次：`errors.Is(err, ErrBookNotFound)`、`errors.As(err, &ve)`、`errors.As(err, &apiError)`，逐個問「呢度點解用呢個唔用另一個」
+
 ## 未答完嘅思考題
+
+- NestJS `throw new NotFoundException()` 可以喺深層直接「飛」上 exception filter — 背後係咩語言機制？Go 明知有（近親：panic/recover）特登唔用嚟做日常 error handling — 嫌佢邊樣嘢？（提示：睇 function signature 知唔知佢會唔會中途走佬）
 
 - `json.Unmarshal(data, v)` 用 `any` 所以冇 compile-time 保護 — generics 版會點設計？
 - `c.Errors` 係 slice（一個 request 可掛多個 error），我哋淨處理 `.Last()` — 幾時會想處理晒？
