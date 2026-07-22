@@ -96,6 +96,92 @@ func TestGetBookNotFound(t *testing.T) {
 	}
 }
 
+func TestGetBookHandlerValidation(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	rec := doRequest(t, router, http.MethodGet, "/books/0", "")
+
+	// Laravel-style validation contract：422 + message + errors map
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+	}
+
+	var resp struct {
+		Message string              `json:"message"`
+		Errors  map[string][]string `json:"errors"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response is not valid JSON: %v; body: %s", err, rec.Body.String())
+	}
+	if resp.Message == "" {
+		t.Errorf("message should not be empty")
+	}
+	// 只 assert 契約核心（id 有錯、有講原因），唔 assert 具體措辭 —
+	// 措辭係 implementation，邊個 field 錯先係 contract
+	if len(resp.Errors["id"]) == 0 {
+		t.Errorf("errors.id should contain at least one message; body: %s", rec.Body.String())
+	}
+}
+
+func TestGetBookHandler(t *testing.T) {
+
+	tests := []struct {
+		name       string // subtest 名，會顯示喺 go test -v 度
+		seed       func(s *BookStore)
+		path       string
+		body       string
+		wantStatus int
+	}{
+		{
+			name: "normal get",
+			seed: func(s *BookStore) {
+				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			},
+			path:       "/books/1",
+			body:       "",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name: "uri id is not a valid integer",
+			seed: func(s *BookStore) {
+			},
+			path:       "/books/not-a-number",
+			body:       "",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "book not found",
+			seed: func(s *BookStore) {
+			},
+			path:       "/books/999",
+			body:       "",
+			wantStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
+			router, store := newTestRouter(t)
+			tt.seed(store)
+
+			rec := doRequest(t, router, http.MethodGet, tt.path, tt.body)
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+
+			if tt.wantStatus == http.StatusOK {
+				var got Book
+				if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+					t.Fatalf("response is not valid JSON: %v", err)
+				}
+				if got.Title != "Book 1" || got.Author != "Author 1" || got.Year != 2015 {
+					t.Errorf("unexpected book: %+v", got)
+				}
+			}
+		})
+	}
+}
+
 func TestUpdateBookHandler(t *testing.T) {
 	tests := []struct {
 		name       string // subtest 名，會顯示喺 go test -v 度
@@ -120,6 +206,14 @@ func TestUpdateBookHandler(t *testing.T) {
 			path:       "/books/42",
 			body:       `{"title":"B","author":"Y","year":2016}`,
 			wantStatus: http.StatusNotFound,
+		},
+		{
+			name: "uri id is not a valid integer",
+			seed: func(s *BookStore) {
+			},
+			path:       "/books/not-a-number",
+			body:       "",
+			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name: "missing author",
@@ -176,5 +270,78 @@ func TestUpdateBookHandler(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestDeleteBookHandlerValidation(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	rec := doRequest(t, router, http.MethodDelete, "/books/0", "")
+
+	// Laravel-style validation contract：422 + message + errors map
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+	}
+
+	var resp struct {
+		Message string              `json:"message"`
+		Errors  map[string][]string `json:"errors"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response is not valid JSON: %v; body: %s", err, rec.Body.String())
+	}
+	if resp.Message == "" {
+		t.Errorf("message should not be empty")
+	}
+	// 只 assert 契約核心（id 有錯、有講原因），唔 assert 具體措辭 —
+	// 措辭係 implementation，邊個 field 錯先係 contract
+	if len(resp.Errors["id"]) == 0 {
+		t.Errorf("errors.id should contain at least one message; body: %s", rec.Body.String())
+	}
+}
+
+func TestDeleteBookHandler(t *testing.T) {
+
+	tests := []struct {
+		name       string // subtest 名，會顯示喺 go test -v 度
+		seed       func(s *BookStore)
+		path       string
+		body       string
+		wantStatus int
+	}{
+		{
+			name: "normal delete",
+			seed: func(s *BookStore) {
+				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			},
+			path:       "/books/1",
+			body:       "",
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name: "uri id is not a valid integer",
+			seed: func(s *BookStore) {
+			},
+			path:       "/books/abc",
+			body:       "",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
+			router, store := newTestRouter(t)
+			tt.seed(store)
+
+			rec := doRequest(t, router, http.MethodDelete, tt.path, tt.body)
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+
+			if tt.wantStatus == http.StatusNoContent {
+				if rec.Body.String() != "" {
+					t.Errorf("body should be empty; body: %s", rec.Body.String())
+				}
+			}
+		})
+	}
 }

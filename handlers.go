@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,7 +11,7 @@ import (
 // 冇 DI container，直接喺 main() 度砌好傳入嚟。
 
 type BookParam struct {
-	ID int `uri:"id" binding:"required"`
+	ID int `uri:"id" binding:"min=1"`
 }
 type BookHandler struct {
 	store *BookStore
@@ -51,14 +50,15 @@ func (h *BookHandler) ListBooks(c *gin.Context) {
 
 // GET /books/:id
 func (h *BookHandler) GetBook(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.Error(&APIError{Status: http.StatusBadRequest, Message: "id must be an integer"})
+	var paramInput BookParam
+
+	if err := c.ShouldBindUri(&paramInput); err != nil {
+		c.Error(err)
 		c.Abort()
 		return
 	}
 
-	book, err := h.store.Get(id)
+	book, err := h.store.Get(paramInput.ID)
 	if err != nil {
 		c.Error(err)
 		c.Abort()
@@ -75,7 +75,7 @@ func (h *BookHandler) UpdateBook(c *gin.Context) {
 	var paramInput BookParam
 
 	if err := c.ShouldBindUri(&paramInput); err != nil {
-		c.Error(&APIError{Status: http.StatusBadRequest, Message: "id must be an integer"})
+		c.Error(err)
 		c.Abort()
 		return
 	}
@@ -106,7 +106,7 @@ func (h *BookHandler) DeleteBook(c *gin.Context) {
 	var paramInput BookParam
 
 	if err := c.ShouldBindUri(&paramInput); err != nil {
-		c.Error(&APIError{Status: http.StatusBadRequest, Message: "id must be an integer"})
+		c.Error(err)
 		c.Abort()
 		return
 	}

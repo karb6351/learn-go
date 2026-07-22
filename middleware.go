@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -11,8 +12,8 @@ import (
 
 var errorTagMessages = map[string]string{
 	"required": "The {field} is required.",
-	"min":      "The {field} must be at least {value} characters.",
-	"max":      "The {field} must be at most {value} characters.",
+	"min":      "The {field} must be at least {value}.",
+	"max":      "The {field} must be at most {value}.",
 	"email":    "The {field} must be a valid email address.",
 	"url":      "The {field} must be a valid URL.",
 	"ip":       "The {field} must be a valid IP address.",
@@ -36,31 +37,20 @@ func ErrorHandler() gin.HandlerFunc {
 		}
 		err := c.Errors.Last().Err
 
-		// TODO(你嚟寫): translation switch，將 err 轉做 Laravel-style response
-		//
-		// 目標 contract：
-		//   validation 失敗 → 422 + {"message":"The given data was invalid.",
-		//                             "errors":{"author":["The author field is required."]}}
-		//   ErrBookNotFound → 404 + {"message":"book not found"}
-		//   其他（兜底）     → 500 + {"message":"internal error"}
-		//
-		// 工具提示：
-		//   1. validation error 要用 errors.As 提取 concrete type：
-		//        var ve validator.ValidationErrors        // import "github.com/go-playground/validator/v10"
-		//        if errors.As(err, &ve) {
-		//            for _, fe := range ve {
-		//                fe.Field()  // "Author"（Go field 名，記得轉細楷）
-		//                fe.Tag()    // "required" / "gte" / ...
-		//            }
-		//        }
-		//   2. errors map 嘅 type 係 map[string][]string（一個 field 可以有多條 message）
-		//   3. message 措辭你話事 — 想似 Laravel 可以砌 "The <field> field is <tag>."
-		//   4. ErrBookNotFound 用返 errors.Is（sentinel 比對）
-		//
-		// 記住剷埋下面兩行 placeholder
+		// 呢個 switch 識得處理三種 error 型式：
+		// 1. validator.ValidationErrors（用 errors.As）：代表 validate struct input（eg binding/validation）出錯
+		//    ==> translate 做 HTTP 422 Unprocessable Entity。用 As 因為 validator.ValidationErrors 係一個 error slice type，要檢查「有冇包含呢個型態」。
+		// 2. ErrBookNotFound（用 errors.Is）：業務邏輯自定義 error，代表資源搵唔到
+		//    ==> translate 做 HTTP 404 Not Found。用 Is 因為 ErrBookNotFound 係一個 sentinel error，直接 match 就得。
+		// 3. *strconv.NumError（用 errors.As）：通常出現於 query param / 路徑等 parse int 失敗
+		//    ==> translate 做 HTTP 400 Bad Request。用 As 因為 *NumError 係 struct，可能用 wrap 攞出嚟。
+		// 最後 fallback（兜底）交畀 HTTP 500 Internal Server Error
+		//    ==> 設計意圖：如果有未 translate 嘅崩潰／預料外錯誤響度，都會用 500 alert，方便追蹤程式設計唔完善/有新 error case 未覆蓋。
+
 		var validationErrors validator.ValidationErrors
-		var apiError *APIError
+		var numError *strconv.NumError
 		if errors.As(err, &validationErrors) {
+			// 處理 validation error，HTTP 422
 			errs := make(map[string][]string)
 			for _, fe := range validationErrors {
 				fieldName := strings.ToLower(fe.Field())
@@ -72,12 +62,18 @@ func ErrorHandler() gin.HandlerFunc {
 				fieldMessage = strings.Replace(fieldMessage, "{field}", fieldName, 1)
 				errs[fieldName] = append(errs[fieldName], fieldMessage)
 			}
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"message": "The given data was invalid.", "errors": errs})
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"message": "The given data was invalid.",
+				"errors":  errs,
+			})
 		} else if errors.Is(err, ErrBookNotFound) {
+			// 處理書本資源唔存在，HTTP 404
 			c.JSON(http.StatusNotFound, gin.H{"message": "book not found"})
-		} else if errors.As(err, &apiError) {
-			c.JSON(apiError.Status, gin.H{"message": apiError.Message})
+		} else if errors.As(err, &numError) {
+			// 處理 integer parse 錯，HTTP 400
+			c.JSON(http.StatusBadRequest, gin.H{"message": numError.Num + " is not a valid integer"})
 		} else {
+			// 任何未捕捉/未 translate 嘅error都出 HTTP 500
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 		}
 	}
