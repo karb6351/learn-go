@@ -60,6 +60,12 @@
 - Gin URI binding 塞唔入 `int` 出嘅係 stdlib `*strconv.NumError`（`.Num` 孭住原始輸入）— middleware 加 `As` 分支譯 400，唔好俾佢跌落 500 兜底
 - 400 vs 422 嘅分工（我哋揀嘅 contract）：parse 唔到（malformed，`abc`）→ 400；parse 到但犯 rule（`0` 撞 `min=1`）→ 422 Laravel style
 - Handler 徹底唔識 status code（架構 A）先消滅到 copy-paste；架構 B（handler 譯 domain→`APIError`）都合法但要收 per-handler 重複嘅代價 — 試過，倒返轉頭
+- `%w` wrapping：`fmt.Errorf("book %d: %w", id, ErrNotFound)` 起一個 `Unwrap() error` 節點 → error chain 係字面意義嘅 linked list；`Is`/`As` 個 loop 係「比對 → 剝一層 → 再比對」行到底（睇過 stdlib `errors/wrap.go` 原文）
+- Error 家族靠 **Unwrap chain** 唔係 embedding：`ResourceNotFoundError`（type，孭 `Resource`/`ID`）+ `Unwrap() → ErrNotFound`（sentinel）= `As` 攞料、`Is` 認族兩樣都得；舊 `Is` test 一行不改照綠就係橋樑生效嘅證據。GORM 都係咁玩
+- 命名 convention：sentinel **值**用 `Err` 頭（`ErrNotFound`）、error **type** 用 `Error` 尾（`ResourceNotFoundError`、`*strconv.NumError`）— 個名已經話你知用 `Is` 定 `As`
+- `As` 完就用抽出嚟嗰粒變數，唔好再掂 `err` — `err.Error()` 係成條 chain 嘅串連版，第日多包一層就漏晒出街
+- Middleware if/else chain 唔使 strategy pattern：分支數目跟 error **類別**增長（個位數封頂），唔係跟 resource／endpoint；「爆」嘅憂慮應該用 generic sentinel + wrap 喺源頭解決。Registry 要等到拆 package、各 package 自行註冊嗰陣先有真需求（rule of three / 痛咗先抽象）
+- Rename 紀律：grep 出完整名單（**包埋 comment**）→ 逐個銷 → 再 grep 驗屍；唔好憑記憶改
 
 **Testing（4.5 章新增）**
 - 「碰巧 pass」再現：copy-paste test 冇改 method，DELETE test 全程打緊 GET 照樣全綠 — pass 唔代表 test 緊你以為嗰樣嘢；新 test case 要親眼見過佢紅（red-green 嘅 red 係證據）

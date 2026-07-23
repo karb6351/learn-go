@@ -40,15 +40,16 @@ func ErrorHandler() gin.HandlerFunc {
 		// 呢個 switch 識得處理三種 error 型式：
 		// 1. validator.ValidationErrors（用 errors.As）：代表 validate struct input（eg binding/validation）出錯
 		//    ==> translate 做 HTTP 422 Unprocessable Entity。用 As 因為 validator.ValidationErrors 係一個 error slice type，要檢查「有冇包含呢個型態」。
-		// 2. ErrBookNotFound（用 errors.Is）：業務邏輯自定義 error，代表資源搵唔到
-		//    ==> translate 做 HTTP 404 Not Found。用 Is 因為 ErrBookNotFound 係一個 sentinel error，直接 match 就得。
+		// 2. ResourceNotFoundError（用 errors.As）：業務邏輯自定義 error，代表資源搵唔到
+		//    ==> translate 做 HTTP 404 Not Found。用 As 因為 ResourceNotFoundError 係一款隨時 new、孭 fields；經 Unwrap 同 ErrNotFound 相連。
 		// 3. *strconv.NumError（用 errors.As）：通常出現於 query param / 路徑等 parse int 失敗
-		//    ==> translate 做 HTTP 400 Bad Request。用 As 因為 *NumError 係 struct，可能用 wrap 攞出嚟。
+		//    ==> translate 做 HTTP 400 Bad Request。用 As 因為 *NumError 係一款隨時 new、孭 fields；經 Unwrap 同 ErrNotFound 相連。
 		// 最後 fallback（兜底）交畀 HTTP 500 Internal Server Error
 		//    ==> 設計意圖：如果有未 translate 嘅崩潰／預料外錯誤響度，都會用 500 alert，方便追蹤程式設計唔完善/有新 error case 未覆蓋。
 
 		var validationErrors validator.ValidationErrors
 		var numError *strconv.NumError
+		var resourceNotFoundError *ResourceNotFoundError
 		if errors.As(err, &validationErrors) {
 			// 處理 validation error，HTTP 422
 			errs := make(map[string][]string)
@@ -66,9 +67,9 @@ func ErrorHandler() gin.HandlerFunc {
 				"message": "The given data was invalid.",
 				"errors":  errs,
 			})
-		} else if errors.Is(err, ErrBookNotFound) {
+		} else if errors.As(err, &resourceNotFoundError) {
 			// 處理書本資源唔存在，HTTP 404
-			c.JSON(http.StatusNotFound, gin.H{"message": "book not found"})
+			c.JSON(http.StatusNotFound, gin.H{"message": resourceNotFoundError.Error()})
 		} else if errors.As(err, &numError) {
 			// 處理 integer parse 錯，HTTP 400
 			c.JSON(http.StatusBadRequest, gin.H{"message": numError.Num + " is not a valid integer"})

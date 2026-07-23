@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -20,10 +21,25 @@ type Book struct {
 	BaseBook
 }
 
-// ErrBookNotFound 係一個 sentinel error。
+// ErrNotFound 係一個 sentinel error。
 // Go 冇 exception，錯誤係用 return value 傳返出去，
 // caller 用 errors.Is() 嚟判斷係邊種錯。
-var ErrBookNotFound = errors.New("book not found")
+var ErrNotFound = errors.New("resource not found")
+
+// ResourceNotFoundError 係一個 custom error。
+// caller 用 errors.As() 嚟 unpack。
+type ResourceNotFoundError struct {
+	Resource string
+	ID       int
+}
+
+func (e *ResourceNotFoundError) Error() string {
+	return fmt.Sprintf("%s %d not found", e.Resource, e.ID)
+}
+
+func (e *ResourceNotFoundError) Unwrap() error {
+	return ErrNotFound
+}
 
 // BookStore 係 in-memory repository。
 // Go 嘅 HTTP server 每個 request 一條 goroutine，
@@ -71,7 +87,7 @@ func (s *BookStore) Get(id int) (Book, error) {
 
 	b, ok := s.books[id]
 	if !ok {
-		return Book{}, ErrBookNotFound
+		return Book{}, &ResourceNotFoundError{Resource: "book", ID: id}
 	}
 	return b, nil
 }
@@ -82,7 +98,7 @@ func (s *BookStore) Update(id int, b Book) (Book, error) {
 	defer s.mu.Unlock()
 
 	if _, ok := s.books[id]; !ok {
-		return Book{}, ErrBookNotFound
+		return Book{}, &ResourceNotFoundError{Resource: "book", ID: id}
 	}
 	b.ID = id
 	s.books[id] = b
@@ -95,7 +111,7 @@ func (s *BookStore) Delete(id int) error {
 	defer s.mu.Unlock()
 
 	if _, ok := s.books[id]; !ok {
-		return ErrBookNotFound
+		return &ResourceNotFoundError{Resource: "book", ID: id}
 	}
 	delete(s.books, id)
 	return nil

@@ -44,12 +44,24 @@ func TestGetReturnsStoredBook(t *testing.T) {
 
 func TestGetNotFound(t *testing.T) {
 	store := NewBookStore()
+	var resourceNotFoundError *ResourceNotFoundError
 
 	_, err := store.Get(999)
 	// 唔好淨係 check err != nil — 要 check 係「啱嗰種」error
-	if !errors.Is(err, ErrBookNotFound) {
-		t.Errorf("Get(999) error = %v, want ErrBookNotFound", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get(999) error = %v, want ErrNotFound", err)
 	}
+	if !errors.As(err, &resourceNotFoundError) {
+		t.Fatalf("Get(999) error = %v, want ResourceNotFoundError", err)
+	}
+
+	if resourceNotFoundError.Resource != "book" {
+		t.Errorf("ResourceNotFoundError.Resource = %s, want book", resourceNotFoundError.Resource)
+	}
+	if resourceNotFoundError.ID != 999 {
+		t.Errorf("ResourceNotFoundError.ID = %d, want 999", resourceNotFoundError.ID)
+	}
+
 }
 
 // Table-driven test — Go 社群最核心嘅 test pattern。
@@ -69,10 +81,10 @@ func TestDelete(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name:    "missing book returns ErrBookNotFound",
+			name:    "missing book returns ErrNotFound",
 			setup:   func(s *BookStore) {},
 			id:      42,
-			wantErr: ErrBookNotFound,
+			wantErr: ErrNotFound,
 		},
 	}
 
