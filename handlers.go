@@ -6,6 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type BookRepository interface {
+	Create(b Book) (Book, error)
+	List() ([]Book, error)
+	Get(id int) (Book, error)
+	Update(id int, b Book) (Book, error)
+	Delete(id int) error
+}
+
 // BookHandler 揸住 store 嘅 reference。
 // 呢個就係 Go 版嘅 "constructor injection" —
 // 冇 DI container，直接喺 main() 度砌好傳入嚟。
@@ -14,14 +22,14 @@ type BookParam struct {
 	ID int `uri:"id" binding:"min=1"`
 }
 type BookHandler struct {
-	store *BookStore
+	store BookRepository
 }
 
 type BookInput struct {
 	BaseBook
 }
 
-func NewBookHandler(store *BookStore) *BookHandler {
+func NewBookHandler(store BookRepository) *BookHandler {
 	return &BookHandler{store: store}
 }
 
@@ -37,15 +45,26 @@ func (h *BookHandler) CreateBook(c *gin.Context) {
 		return
 	}
 
-	created := h.store.Create(Book{
+	created, err := h.store.Create(Book{
 		BaseBook: input.BaseBook,
 	})
+	if err != nil {
+		c.Error(err)
+		c.Abort()
+		return
+	}
 	c.JSON(http.StatusCreated, created)
 }
 
 // GET /books
 func (h *BookHandler) ListBooks(c *gin.Context) {
-	c.JSON(http.StatusOK, h.store.List())
+	books, err := h.store.List()
+	if err != nil {
+		c.Error(err)
+		c.Abort()
+		return
+	}
+	c.JSON(http.StatusOK, books)
 }
 
 // GET /books/:id

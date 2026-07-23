@@ -17,8 +17,14 @@ import (
 func TestCreateAssignsSequentialIDs(t *testing.T) {
 	store := NewBookStore() // 每個 test 開個新 store — test 之間零共享
 
-	b1 := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
-	b2 := store.Create(Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
+	b1, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+	if err != nil {
+		t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
+	}
+	b2, err := store.Create(Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
+	if err != nil {
+		t.Fatalf("Create(Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) returned unexpected error: %v", err)
+	}
 
 	if b1.ID != 1 {
 		t.Errorf("first book: got ID %d, want 1", b1.ID)
@@ -30,7 +36,10 @@ func TestCreateAssignsSequentialIDs(t *testing.T) {
 
 func TestGetReturnsStoredBook(t *testing.T) {
 	store := NewBookStore()
-	created := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+	created, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+	if err != nil {
+		t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
+	}
 
 	got, err := store.Get(created.ID)
 	if err != nil {
@@ -92,7 +101,6 @@ func TestDelete(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
 			store := NewBookStore()
 			tt.setup(store)
-
 			err := store.Delete(tt.id)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Delete(%d) error = %v, want %v", tt.id, err, tt.wantErr)

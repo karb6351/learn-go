@@ -58,18 +58,17 @@ func NewBookStore() *BookStore {
 }
 
 // Create 接收一本冇 ID 嘅書，assign ID 之後存起佢。
-func (s *BookStore) Create(b Book) Book {
+func (s *BookStore) Create(b Book) (Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	b.ID = s.nextID
 	s.nextID++
 	s.books[b.ID] = b
-	return b
+	return b, nil
 }
 
 // List 回傳所有書。用 RLock 因為只係讀，多個 reader 可以並行。
-func (s *BookStore) List() []Book {
+func (s *BookStore) List() ([]Book, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -77,7 +76,7 @@ func (s *BookStore) List() []Book {
 	for _, b := range s.books {
 		result = append(result, b)
 	}
-	return result
+	return result, nil
 }
 
 // Get 回傳單一本書。Go 嘅慣例係回傳 (value, error) 一對。

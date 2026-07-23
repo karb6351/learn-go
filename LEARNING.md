@@ -10,17 +10,19 @@
 - [x] 第三章：Testing（table-driven / httptest / red-green）
 - [x] 第四章：Error handling middleware（translation switch + handler refactor，全綠 ✅）
 - [x] 第 4.5 章：Generic error handling（id validation 統一 + contract tests + 完工註解 ✅）
-- [ ] **第五章（未揀）：GORM + SQLite / Project layout 拆 package / 其他 middleware（auth / logging / rate limit）** ⬅ 下次由呢度開始
+- [x] 第 4.9 章（bonus）：Error 家族 — generic `ErrNotFound` + `%w` + `ResourceNotFoundError`/`Unwrap` 橋樑 ✅
+- [ ] **第五章：GORM + SQLite（進行中 — 任務睇下面）** ⬅ 而家喺呢度
+- [ ] 第六章（未揀）：Project layout 拆 package / 其他 middleware（auth / logging / rate limit）
 
-## 下次開波
+## ⚠️ 第五章任務（任務 1–3 完成 ✅，剩任務 4）
 
-冇未完成任務 — 淨係要揀第五章方向。4.5 章最終形態：
+已完成：`BookRepository` interface（consumer 側，五 method 全帶 error 位）、`GormBookStore` 五個 CRUD（layering 乾淨、not-found 語義同 mem store 一致）、`main.go` 接 GORM store、persistence 用 `sqlite3` 直讀 `books.db` 驗證咗（AutoMigrate 自動起 table，embedded `BaseBook` 攤平做 columns）。
 
-- 三個 endpoint 統一用 `BookParam`（`uri:"id" binding:"min=1"`）+ `ShouldBindUri`
-- Handler 完全唔識 HTTP status — 一律 `c.Error(err)` + `c.Abort()` 交貨（架構 A 徹底版）
-- Middleware translation switch 四款：`ValidationErrors`→422 Laravel style / `ErrBookNotFound`→404 / `*strconv.NumError`→400 / 兜底→500（警報器）
-- id contract 已鎖：`/books/abc`→400、`/books/0`→422、`/books/999`→404、DELETE 成功→204 冇 body
-- `APIError` 實驗完剷咗（YAGNI）— 曾經行過「handler 譯 domain error 做 APIError」嘅架構 B，最後揀返 A；兩個架構嘅 trade-off 見速查表
+### 任務 4（bonus，下次做）：test suite 對兩個 implementation 通用
+
+而家 store tests（`book_test.go`）寫死 `NewBookStore()`，GORM store 零 unit test — Delete 嘅 `RowsAffected` 陷阱嗰類蟲，handler test（mem store 陪練）係唔會出聲嘅。諗下點樣用 table（名 + constructor function 嘅 list）令同一套 test 兩款 store 都行一次。提示：GORM 版 test 要諗 DB file 點樣每個 test 隔離（`t.TempDir()` 係你朋友）。
+
+驗收照舊：`go vet ./... && go test ./...` 全綠。
 
 ## File 結構
 
@@ -30,6 +32,7 @@
 | `book.go` | `BaseBook`/`Book` model + in-memory store (mutex) | Entity + Repository |
 | `handlers.go` | HTTP handlers + `BookInput` DTO | Controller + DTO |
 | `middleware.go` | `ErrorHandler()` — 全 API error 出口（translation switch 完工，有完工版教學註解） | Laravel Handler::render / NestJS exception filter |
+| `gorm_store.go` | `GormBookStore` — GORM + SQLite store（骨架已起，CRUD 施工中） | Eloquent model / TypeORM repository |
 | `*_test.go` | store unit tests + httptest handler tests | PHPUnit / Jest + supertest |
 
 跑 server：`go run .`（port 8089）；跑 test：`go test -v ./...`
@@ -66,6 +69,17 @@
 - `As` 完就用抽出嚟嗰粒變數，唔好再掂 `err` — `err.Error()` 係成條 chain 嘅串連版，第日多包一層就漏晒出街
 - Middleware if/else chain 唔使 strategy pattern：分支數目跟 error **類別**增長（個位數封頂），唔係跟 resource／endpoint；「爆」嘅憂慮應該用 generic sentinel + wrap 喺源頭解決。Registry 要等到拆 package、各 package 自行註冊嗰陣先有真需求（rule of three / 痛咗先抽象）
 - Rename 紀律：grep 出完整名單（**包埋 comment**）→ 逐個銷 → 再 grep 驗屍；唔好憑記憶改
+
+**Interface + GORM（第五章新增）**
+- Consumer-defined interface：食客開單 — method 名單以 handler 實際用到為準，定義擺 consumer file（同 Java/NestJS provider-side 調轉）；grep `h.store\.` 就係張單
+- **Accept interfaces, return structs**：parameter 收 interface（`setupRouter(store BookRepository)`），constructor 交 concrete（`NewBookStore() *BookStore`）— return interface 會迫 caller 用 type assertion（`x.(T)`）剝殼攞返自己嘅嘢，兼且令 implementation 側反向依賴 consumer 嘅 interface（拆 package 時會變 import cycle）
+- Structural typing 接駁實感：`NewBookHandler(store)` 一句，`*BookStore` 冇宣佈過 implements 就塞得入 `BookRepository` — method set 齊就自動收貨
+- Interface signature 要遷就「識失敗嘅 implementation」：mem store 唔會 fail 但 GORM 會 → 五個 method 全帶 error 位；改 signature 之後 **compiler error list = todo list**，逐個清（TS 都係咁，PHP 就要等 runtime 炸）
+- GORM 對應：`AutoMigrate` ≈ TypeORM synchronize（dev 玩具）；`First` 搵唔到先出 `gorm.ErrRecordNotFound`（sentinel → `errors.Is`）；**`Delete` 唔存在嘅 id 唔會 error** — `result.Error == nil` + `RowsAffected == 0`，兩個獨立兄弟 check 順序行，唔好 nested / `||` 縮埋
+- 每個 db 操作都要摸 `.Error`（`Create`/`Find`/`Save` 全部識失敗）— GORM 唔 throw，唔檢查就係 silent failure
+- 多條件 error handling 寫完用 **truth table 過一次**（每個情況 × 應該回乜 × 實際回乜）— 靠倒模句子執 code 係會將啲括號執錯位
+- `main()` 起場失敗用 `log.Fatal(err)` — server 未起，冇 client 要靚 response，全 project 唯一「直接死」嘅位
+- SQLite = 一個 file 就係成個 DB：`sqlite3 books.db "select..."` 直讀，繞過 server 驗 persistence 係最狠嘅證據
 
 **Testing（4.5 章新增）**
 - 「碰巧 pass」再現：copy-paste test 冇改 method，DELETE test 全程打緊 GET 照樣全綠 — pass 唔代表 test 緊你以為嗰樣嘢；新 test case 要親眼見過佢紅（red-green 嘅 red 係證據）
