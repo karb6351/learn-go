@@ -11,100 +11,132 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
-func TestCreateAssignsSequentialIDs(t *testing.T) {
-	store := NewBookStore() // 每個 test 開個新 store — test 之間零共享
+type storeFactory func(t *testing.T) BookRepository
 
-	b1, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
-	if err != nil {
-		t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
-	}
-	b2, err := store.Create(Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
-	if err != nil {
-		t.Fatalf("Create(Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) returned unexpected error: %v", err)
-	}
+func testBookRepository(t *testing.T, factory storeFactory) {
+	t.Run("create assigns IDs", func(t *testing.T) {
+		store := factory(t)
 
-	if b1.ID != 1 {
-		t.Errorf("first book: got ID %d, want 1", b1.ID)
-	}
-	if b2.ID != 2 {
-		t.Errorf("second book: got ID %d, want 2", b2.ID)
-	}
+		b1, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+		if err != nil {
+			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
+		}
+		b2, err := store.Create(Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
+		if err != nil {
+			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) returned unexpected error: %v", err)
+		}
+
+		if b1.ID < 1 || b2.ID < 1 {
+			t.Errorf("book IDs = %d, %d, should be greater than 0", b1.ID, b2.ID)
+		}
+
+		if b1.ID == b2.ID {
+			t.Errorf("book IDs = %d, %d, should be different", b1.ID, b2.ID)
+		}
+
+	})
+
+	t.Run("get returns stored book", func(t *testing.T) {
+		store := factory(t)
+
+		created, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+		if err != nil {
+			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
+		}
+
+		got, err := store.Get(created.ID)
+		if err != nil {
+			t.Fatalf("Get(%d) returned unexpected error: %v", created.ID, err)
+		}
+		// struct 冇 pointer field 嘅話可以直接 == 比較
+		if got != created {
+			t.Errorf("Get(%d) = %+v, want %+v", created.ID, got, created)
+		}
+	})
+
+	t.Run("get missing book", func(t *testing.T) {
+		store := factory(t)
+
+		var resourceNotFoundError *ResourceNotFoundError
+
+		_, err := store.Get(999)
+		// 唔好淨係 check err != nil — 要 check 係「啱嗰種」error
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("Get(999) error = %v, want ErrNotFound", err)
+		}
+		if !errors.As(err, &resourceNotFoundError) {
+			t.Fatalf("Get(999) error = %v, want ResourceNotFoundError", err)
+		}
+
+		if resourceNotFoundError.Resource != "book" {
+			t.Errorf("ResourceNotFoundError.Resource = %s, want book", resourceNotFoundError.Resource)
+		}
+		if resourceNotFoundError.ID != 999 {
+			t.Errorf("ResourceNotFoundError.ID = %d, want 999", resourceNotFoundError.ID)
+		}
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		tests := []struct {
+			name    string // subtest 名，會顯示喺 go test -v 度
+			setup   func(t *testing.T, s BookRepository) int
+			wantErr error
+		}{
+			{
+				name: "existing book is deleted",
+				setup: func(t *testing.T, s BookRepository) int {
+					book, err := s.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X"}})
+					if err != nil {
+						t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X}}) returned unexpected error: %v", err)
+					}
+					return book.ID
+				},
+				wantErr: nil,
+			}, {
+				name: "missing book returns ErrNotFound",
+				setup: func(t *testing.T, s BookRepository) int {
+					return 42
+				},
+				wantErr: ErrNotFound,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
+				store := factory(t)
+				id := tt.setup(t, store)
+				err := store.Delete(id)
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("Delete(%d) error = %v, want %v", id, err, tt.wantErr)
+				}
+				if tt.wantErr == nil {
+					_, err := store.Get(id)
+					if !errors.Is(err, ErrNotFound) {
+						t.Errorf("Get(%d) error = %v, want ErrNotFound", id, err)
+					}
+				}
+			})
+		}
+	})
 }
 
-func TestGetReturnsStoredBook(t *testing.T) {
-	store := NewBookStore()
-	created, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
-	if err != nil {
-		t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
-	}
-
-	got, err := store.Get(created.ID)
-	if err != nil {
-		t.Fatalf("Get(%d) returned unexpected error: %v", created.ID, err)
-	}
-	// struct 冇 pointer field 嘅話可以直接 == 比較
-	if got != created {
-		t.Errorf("Get(%d) = %+v, want %+v", created.ID, got, created)
-	}
+func TestMemoryBookRepository(t *testing.T) {
+	testBookRepository(t, func(t *testing.T) BookRepository {
+		return NewBookStore()
+	})
 }
 
-func TestGetNotFound(t *testing.T) {
-	store := NewBookStore()
-	var resourceNotFoundError *ResourceNotFoundError
-
-	_, err := store.Get(999)
-	// 唔好淨係 check err != nil — 要 check 係「啱嗰種」error
-	if !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Get(999) error = %v, want ErrNotFound", err)
-	}
-	if !errors.As(err, &resourceNotFoundError) {
-		t.Fatalf("Get(999) error = %v, want ResourceNotFoundError", err)
-	}
-
-	if resourceNotFoundError.Resource != "book" {
-		t.Errorf("ResourceNotFoundError.Resource = %s, want book", resourceNotFoundError.Resource)
-	}
-	if resourceNotFoundError.ID != 999 {
-		t.Errorf("ResourceNotFoundError.ID = %d, want 999", resourceNotFoundError.ID)
-	}
-
-}
-
-// Table-driven test — Go 社群最核心嘅 test pattern。
-// 同一段測試邏輯，用一個 slice 餵唔同 case，
-// 相當於 Jest 嘅 it.each / JUnit 嘅 @ParameterizedTest。
-func TestDelete(t *testing.T) {
-	tests := []struct {
-		name    string // subtest 名，會顯示喺 go test -v 度
-		setup   func(s *BookStore)
-		id      int
-		wantErr error
-	}{
-		{
-			name:    "existing book is deleted",
-			setup:   func(s *BookStore) { s.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X"}}) },
-			id:      1,
-			wantErr: nil,
-		},
-		{
-			name:    "missing book returns ErrNotFound",
-			setup:   func(s *BookStore) {},
-			id:      42,
-			wantErr: ErrNotFound,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
-			store := NewBookStore()
-			tt.setup(store)
-			err := store.Delete(tt.id)
-			if !errors.Is(err, tt.wantErr) {
-				t.Errorf("Delete(%d) error = %v, want %v", tt.id, err, tt.wantErr)
-			}
-		})
-	}
+func TestGormBookRepository(t *testing.T) {
+	testBookRepository(t, func(t *testing.T) BookRepository {
+		dbPath := filepath.Join(t.TempDir(), "books.db")
+		store, err := NewGormBookStore(dbPath)
+		if err != nil {
+			t.Fatalf("Failed to create book store: %v", err)
+		}
+		return store
+	})
 }

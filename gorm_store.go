@@ -34,24 +34,6 @@ func NewGormBookStore(path string) (*GormBookStore, error) {
 	return &GormBookStore{db: db}, nil
 }
 
-// TODO(你嚟寫): 五個 CRUD method，簽名同 in-memory BookStore 嗰五個一模一樣。
-//
-// GORM v2 API 提示：
-//   - Create:  s.db.Create(&b) — GORM 會將新 ID 寫返入 b.ID（諗下點解要 &）
-//   - List:    var books []Book → s.db.Find(&books)
-//   - Get:     var b Book → s.db.First(&b, id) — 搵唔到嗰陣 .Error 係 gorm.ErrRecordNotFound
-//   - Update:  先 First 確認存在，再 s.db.Save(&b)（記得保持返 in-memory 版嘅語義：id 以 URL 為準）
-//   - Delete:  result := s.db.Delete(&Book{}, id) — Delete 唔存在嘅 id 唔會出 error！
-//              要靠 result.RowsAffected 自己判斷（諗下：呢個似唔似 map 嘅 zero value 哲學？）
-//   - 每個 db 操作都要檢查 .Error — GORM 唔會 throw，唔檢查就係 silent failure
-//
-// ⚠️ 關鍵設計位（layering rule）：
-//   gorm.ErrRecordNotFound 係 GORM 嘅詞彙，唔准漏出呢個 file。
-//   Caller（handler / middleware / test）只識我哋自己嘅 error 家族
-//   （ErrNotFound / ResourceNotFoundError）。檢查用邊件工具、translate 做乜，
-//   你啱啱先操練完 — GORM 嗰粒係 sentinel 定係 type，你上堂答過 😉
-//   其他 error（DB 死咗等）照原樣回傳 — middleware 兜底 500 會接住。
-
 func (s *GormBookStore) Create(b Book) (Book, error) {
 	if err := s.db.Create(&b).Error; err != nil {
 		return Book{}, err

@@ -101,7 +101,7 @@ func TestGetBookHandlerValidation(t *testing.T) {
 
 	rec := doRequest(t, router, http.MethodGet, "/books/0", "")
 
-	// Laravel-style validation contract：422 + message + errors map
+	// Laravel-style validation contract：422 + message + s map
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
 	}
