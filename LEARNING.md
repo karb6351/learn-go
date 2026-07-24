@@ -11,16 +11,20 @@
 - [x] 第四章：Error handling middleware（translation switch + handler refactor，全綠 ✅）
 - [x] 第 4.5 章：Generic error handling（id validation 統一 + contract tests + 完工註解 ✅）
 - [x] 第 4.9 章（bonus）：Error 家族 — generic `ErrNotFound` + `%w` + `ResourceNotFoundError`/`Unwrap` 橋樑 ✅
-- [ ] **第五章：GORM + SQLite（進行中 — 任務睇下面）** ⬅ 而家喺呢度
-- [ ] 第六章（未揀）：Project layout 拆 package / 其他 middleware（auth / logging / rate limit）
+- [x] 第五章：GORM + SQLite（repository interface / persistence / shared contract suite，全綠 ✅）
+- [ ] **第六章（未揀）：Project layout 拆 package / 其他 middleware（auth / logging / rate limit）** ⬅ 下一步
 
-## ⚠️ 第五章任務（任務 1–3 完成 ✅，剩任務 4）
+## ✅ 第五章任務（任務 1–4 完成）
 
-已完成：`BookRepository` interface（consumer 側，五 method 全帶 error 位）、`GormBookStore` 五個 CRUD（layering 乾淨、not-found 語義同 mem store 一致）、`main.go` 接 GORM store、persistence 用 `sqlite3` 直讀 `books.db` 驗證咗（AutoMigrate 自動起 table，embedded `BaseBook` 攤平做 columns）。
+已完成：`BookRepository` interface（consumer 側，五 method 全帶 error 位）、`GormBookStore` 五個 CRUD（layering 乾淨、not-found 語義同 mem store 一致）、`main.go` 接 GORM store、persistence 用 `sqlite3` 直讀 `books.db` 驗證咗（AutoMigrate 自動起 table，embedded `BaseBook` 攤平做 columns），以及 memory/GORM 共用嘅 repository contract suite。
 
-### 任務 4（bonus，下次做）：test suite 對兩個 implementation 通用
+### 任務 4（bonus，完成 ✅）：一套 test 行兩款 store
 
-而家 store tests（`book_test.go`）寫死 `NewBookStore()`，GORM store 零 unit test — Delete 嘅 `RowsAffected` 陷阱嗰類蟲，handler test（mem store 陪練）係唔會出聲嘅。諗下點樣用 table（名 + constructor function 嘅 list）令同一套 test 兩款 store 都行一次。提示：GORM 版 test 要諗 DB file 點樣每個 test 隔離（`t.TempDir()` 係你朋友）。
+採用 interface compliance suite 形態：`testBookRepository(t, factory)` 定義共用 contract，`TestMemoryBookRepository` / `TestGormBookRepository` 各自提供 `storeFactory`。Factory 收 `*testing.T`，令每個 GORM subtest 都可以用 `t.TempDir()` 建立獨立 SQLite DB；每個 case 重新 call factory，test 之間零共享 state。
+
+Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而且唔重複。Delete setup 回傳實際 `created.ID`，成功後再 `Get` 驗證資料真係消失；setup 明文接收最內層 subtest 嘅 `t`，避免 `Fatalf` 錯用 parent test。
+
+目前共用 suite 覆蓋 Create、Get/not-found、Delete/not-found。下一個可選小練習：補 List 同 Update，令 `BookRepository` 五個 methods 都有 shared contract coverage。
 
 驗收照舊：`go vet ./... && go test ./...` 全綠。
 
@@ -32,8 +36,8 @@
 | `book.go` | `BaseBook`/`Book` model + in-memory store (mutex) | Entity + Repository |
 | `handlers.go` | HTTP handlers + `BookInput` DTO | Controller + DTO |
 | `middleware.go` | `ErrorHandler()` — 全 API error 出口（translation switch 完工，有完工版教學註解） | Laravel Handler::render / NestJS exception filter |
-| `gorm_store.go` | `GormBookStore` — GORM + SQLite store（骨架已起，CRUD 施工中） | Eloquent model / TypeORM repository |
-| `*_test.go` | store unit tests + httptest handler tests | PHPUnit / Jest + supertest |
+| `gorm_store.go` | `GormBookStore` — GORM + SQLite store（五個 CRUD 完成） | Eloquent model / TypeORM repository |
+| `*_test.go` | shared repository contract suite + httptest handler tests | PHPUnit / Jest + supertest |
 
 跑 server：`go run .`（port 8089）；跑 test：`go test -v ./...`
 
@@ -80,6 +84,14 @@
 - 多條件 error handling 寫完用 **truth table 過一次**（每個情況 × 應該回乜 × 實際回乜）— 靠倒模句子執 code 係會將啲括號執錯位
 - `main()` 起場失敗用 `log.Fatal(err)` — server 未起，冇 client 要靚 response，全 project 唯一「直接死」嘅位
 - SQLite = 一個 file 就係成個 DB：`sqlite3 books.db "select..."` 直讀，繞過 server 驗 persistence 係最狠嘅證據
+
+**Testing（第五章新增）**
+- Interface compliance suite：測試針對 `BookRepository` contract 寫一次，兩個 implementation 各自注入 factory；對應舊世界嘅 repository contract / driver conformance tests
+- Factory function 係 test seam：`func(t *testing.T) BookRepository` 將「點樣開 implementation」同「應該有咩行為」分離；constructor error 可以即場 `t.Fatalf`
+- Isolation 粒度要落到每個 subtest：每次 `factory(t)` 開全新 store；GORM 用 `filepath.Join(t.TempDir(), "books.db")`，test 完自動清理
+- Shared contract 唔好承諾 implementation detail：ID 只驗正數兼唯一，唔假設一定由 1 開始；刪除用 Create 實際回傳嘅 ID
+- Command 成功唔等於 state 正確：Delete 回 nil 後再 Get，驗證 postcondition 真係 `ErrNotFound`，先捉到「假成功／刪錯資料」
+- Nested subtest helper 要收最內層嘅 `*testing.T`：`FailNow`/`Fatalf` 只可以由執行該 test 嘅 goroutine 呼叫，唔好 closure 捕捉 parent `t`
 
 **Testing（4.5 章新增）**
 - 「碰巧 pass」再現：copy-paste test 冇改 method，DELETE test 全程打緊 GET 照樣全綠 — pass 唔代表 test 緊你以為嗰樣嘢；新 test case 要親眼見過佢紅（red-green 嘅 red 係證據）
