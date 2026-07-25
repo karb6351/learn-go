@@ -1,10 +1,10 @@
-package main
+package book
 
 import (
-	"errors"
-	"fmt"
 	"sort"
 	"sync"
+
+	"playground/book/internal/apperr"
 )
 
 type BaseBook struct {
@@ -22,44 +22,24 @@ type Book struct {
 	BaseBook
 }
 
-// ErrNotFound 係一個 sentinel error。
-// Go 冇 exception，錯誤係用 return value 傳返出去，
-// caller 用 errors.Is() 嚟判斷係邊種錯。
-var ErrNotFound = errors.New("resource not found")
-
-// ResourceNotFoundError 係一個 custom error。
-// caller 用 errors.As() 嚟 unpack。
-type ResourceNotFoundError struct {
-	Resource string
-	ID       int
-}
-
-func (e *ResourceNotFoundError) Error() string {
-	return fmt.Sprintf("%s %d not found", e.Resource, e.ID)
-}
-
-func (e *ResourceNotFoundError) Unwrap() error {
-	return ErrNotFound
-}
-
-// BookStore 係 in-memory repository。
+// MemoryStore 係 in-memory repository。
 // Go 嘅 HTTP server 每個 request 一條 goroutine，
 // 所以共享嘅 map 一定要用 mutex 保護（map 唔係 thread-safe）。
-type BookStore struct {
+type MemoryStore struct {
 	mu     sync.RWMutex
 	books  map[int]Book
 	nextID int
 }
 
-func NewBookStore() *BookStore {
-	return &BookStore{
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{
 		books:  make(map[int]Book),
 		nextID: 1,
 	}
 }
 
 // Create 接收一本冇 ID 嘅書，assign ID 之後存起佢。
-func (s *BookStore) Create(b Book) (Book, error) {
+func (s *MemoryStore) Create(b Book) (Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b.ID = s.nextID
@@ -69,7 +49,7 @@ func (s *BookStore) Create(b Book) (Book, error) {
 }
 
 // List 回傳所有書。用 RLock 因為只係讀，多個 reader 可以並行。
-func (s *BookStore) List() ([]Book, error) {
+func (s *MemoryStore) List() ([]Book, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -85,24 +65,24 @@ func (s *BookStore) List() ([]Book, error) {
 }
 
 // Get 回傳單一本書。Go 嘅慣例係回傳 (value, error) 一對。
-func (s *BookStore) Get(id int) (Book, error) {
+func (s *MemoryStore) Get(id int) (Book, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	b, ok := s.books[id]
 	if !ok {
-		return Book{}, &ResourceNotFoundError{Resource: "book", ID: id}
+		return Book{}, &apperr.ResourceNotFoundError{Resource: "book", ID: id}
 	}
 	return b, nil
 }
 
 // Update 整本替換（PUT 語義）。
-func (s *BookStore) Update(id int, b Book) (Book, error) {
+func (s *MemoryStore) Update(id int, b Book) (Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.books[id]; !ok {
-		return Book{}, &ResourceNotFoundError{Resource: "book", ID: id}
+		return Book{}, &apperr.ResourceNotFoundError{Resource: "book", ID: id}
 	}
 	b.ID = id
 	s.books[id] = b
@@ -110,12 +90,12 @@ func (s *BookStore) Update(id int, b Book) (Book, error) {
 }
 
 // Delete 刪除一本書。
-func (s *BookStore) Delete(id int) error {
+func (s *MemoryStore) Delete(id int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.books[id]; !ok {
-		return &ResourceNotFoundError{Resource: "book", ID: id}
+		return &apperr.ResourceNotFoundError{Resource: "book", ID: id}
 	}
 	delete(s.books, id)
 	return nil

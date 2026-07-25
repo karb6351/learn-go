@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"errors"
@@ -8,6 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+
+	"playground/book/internal/apperr"
 )
 
 var errorTagMessages = map[string]string{
@@ -49,7 +51,7 @@ func ErrorHandler() gin.HandlerFunc {
 
 		var validationErrors validator.ValidationErrors
 		var numError *strconv.NumError
-		var resourceNotFoundError *ResourceNotFoundError
+		var resourceNotFoundError *apperr.ResourceNotFoundError
 		if errors.As(err, &validationErrors) {
 			// 處理 validation error，HTTP 422
 			errs := make(map[string][]string)

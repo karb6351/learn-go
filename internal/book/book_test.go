@@ -1,4 +1,4 @@
-package main
+package book
 
 // Go testing 三條基本規則：
 //   1. file 名以 _test.go 結尾（build 時會被剔走，唔會入正式 binary）
@@ -13,9 +13,11 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"playground/book/internal/apperr"
 )
 
-type storeFactory func(t *testing.T) BookRepository
+type storeFactory func(t *testing.T) Repository
 
 func testBookRepository(t *testing.T, factory storeFactory) {
 
@@ -97,11 +99,11 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 	t.Run("get missing book", func(t *testing.T) {
 		store := factory(t)
 
-		var resourceNotFoundError *ResourceNotFoundError
+		var resourceNotFoundError *apperr.ResourceNotFoundError
 
 		_, err := store.Get(999)
 		// 唔好淨係 check err != nil — 要 check 係「啱嗰種」error
-		if !errors.Is(err, ErrNotFound) {
+		if !errors.Is(err, apperr.ErrNotFound) {
 			t.Fatalf("Get(999) error = %v, want ErrNotFound", err)
 		}
 		if !errors.As(err, &resourceNotFoundError) {
@@ -158,9 +160,9 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 
 	t.Run("update missing book", func(t *testing.T) {
 		store := factory(t)
-		var resourceNotFoundError *ResourceNotFoundError
+		var resourceNotFoundError *apperr.ResourceNotFoundError
 		_, err := store.Update(999, Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
-		if !errors.Is(err, ErrNotFound) {
+		if !errors.Is(err, apperr.ErrNotFound) {
 			t.Fatalf("Update(999, Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) error = %v, want ErrNotFound", err)
 		}
 		if !errors.As(err, &resourceNotFoundError) {
@@ -177,12 +179,12 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 	t.Run("delete", func(t *testing.T) {
 		tests := []struct {
 			name    string // subtest 名，會顯示喺 go test -v 度
-			setup   func(t *testing.T, s BookRepository) int
+			setup   func(t *testing.T, s Repository) int
 			wantErr error
 		}{
 			{
 				name: "existing book is deleted",
-				setup: func(t *testing.T, s BookRepository) int {
+				setup: func(t *testing.T, s Repository) int {
 					book, err := s.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X"}})
 					if err != nil {
 						t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X}}) returned unexpected error: %v", err)
@@ -192,10 +194,10 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 				wantErr: nil,
 			}, {
 				name: "missing book returns ErrNotFound",
-				setup: func(t *testing.T, s BookRepository) int {
+				setup: func(t *testing.T, s Repository) int {
 					return 42
 				},
-				wantErr: ErrNotFound,
+				wantErr: apperr.ErrNotFound,
 			},
 		}
 
@@ -209,7 +211,7 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 				}
 				if tt.wantErr == nil {
 					_, err := store.Get(id)
-					if !errors.Is(err, ErrNotFound) {
+					if !errors.Is(err, apperr.ErrNotFound) {
 						t.Errorf("Get(%d) error = %v, want ErrNotFound", id, err)
 					}
 				}
@@ -219,15 +221,15 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 }
 
 func TestMemoryBookRepository(t *testing.T) {
-	testBookRepository(t, func(t *testing.T) BookRepository {
-		return NewBookStore()
+	testBookRepository(t, func(t *testing.T) Repository {
+		return NewMemoryStore()
 	})
 }
 
 func TestGormBookRepository(t *testing.T) {
-	testBookRepository(t, func(t *testing.T) BookRepository {
+	testBookRepository(t, func(t *testing.T) Repository {
 		dbPath := filepath.Join(t.TempDir(), "books.db")
-		store, err := NewGormBookStore(dbPath)
+		store, err := NewGormStore(dbPath)
 		if err != nil {
 			t.Fatalf("Failed to create book store: %v", err)
 		}

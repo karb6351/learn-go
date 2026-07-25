@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"encoding/json"
@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"playground/book/internal/book"
 )
 
 // TestMain 係成個 package 測試嘅入口 hook（類似 Jest 嘅 globalSetup）。
@@ -20,10 +22,10 @@ func TestMain(m *testing.M) {
 // 每個 test 用呢個 helper 攞一個全新嘅 router + store。
 // t.Helper() 話俾 testing framework 知：呢個 function 係 helper，
 // 報錯時行號指向 caller，唔係指向呢度。
-func newTestRouter(t *testing.T) (*gin.Engine, *BookStore) {
+func newTestRouter(t *testing.T) (*gin.Engine, book.Repository) {
 	t.Helper()
-	store := NewBookStore()
-	return setupRouter(store), store
+	store := book.NewMemoryStore()
+	return SetupRouter(store), store
 }
 
 // doRequest 模擬一次 HTTP request：
@@ -50,7 +52,7 @@ func TestCreateBookHandler(t *testing.T) {
 	}
 
 	// 將 response JSON parse 返做 Book 嚟驗證內容
-	var got Book
+	var got book.Book
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("response is not valid JSON: %v", err)
 	}
@@ -127,15 +129,15 @@ func TestGetBookHandler(t *testing.T) {
 
 	tests := []struct {
 		name       string // subtest 名，會顯示喺 go test -v 度
-		seed       func(s *BookStore)
+		seed       func(s book.Repository)
 		path       string
 		body       string
 		wantStatus int
 	}{
 		{
 			name: "normal get",
-			seed: func(s *BookStore) {
-				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(s book.Repository) {
+				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       "",
@@ -143,7 +145,7 @@ func TestGetBookHandler(t *testing.T) {
 		},
 		{
 			name: "uri id is not a valid integer",
-			seed: func(s *BookStore) {
+			seed: func(s book.Repository) {
 			},
 			path:       "/books/not-a-number",
 			body:       "",
@@ -151,7 +153,7 @@ func TestGetBookHandler(t *testing.T) {
 		},
 		{
 			name: "book not found",
-			seed: func(s *BookStore) {
+			seed: func(s book.Repository) {
 			},
 			path:       "/books/999",
 			body:       "",
@@ -170,7 +172,7 @@ func TestGetBookHandler(t *testing.T) {
 			}
 
 			if tt.wantStatus == http.StatusOK {
-				var got Book
+				var got book.Book
 				if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 					t.Fatalf("response is not valid JSON: %v", err)
 				}
@@ -185,15 +187,15 @@ func TestGetBookHandler(t *testing.T) {
 func TestUpdateBookHandler(t *testing.T) {
 	tests := []struct {
 		name       string // subtest 名，會顯示喺 go test -v 度
-		seed       func(s *BookStore)
+		seed       func(s book.Repository)
 		path       string
 		body       string
 		wantStatus int
 	}{
 		{
 			name: "normal update",
-			seed: func(s *BookStore) {
-				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(s book.Repository) {
+				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       `{"title":"B","author":"Y","year":2016}`,
@@ -201,7 +203,7 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "missing book",
-			seed: func(s *BookStore) {
+			seed: func(s book.Repository) {
 			},
 			path:       "/books/42",
 			body:       `{"title":"B","author":"Y","year":2016}`,
@@ -209,7 +211,7 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "uri id is not a valid integer",
-			seed: func(s *BookStore) {
+			seed: func(s book.Repository) {
 			},
 			path:       "/books/not-a-number",
 			body:       "",
@@ -217,8 +219,8 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "missing author",
-			seed: func(s *BookStore) {
-				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(s book.Repository) {
+				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       `{"title":"B","year":2016}`,
@@ -227,8 +229,8 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "year too old",
-			seed: func(s *BookStore) {
-				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(s book.Repository) {
+				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       `{"title":"B","author":"Y","year":3000}`,
@@ -237,8 +239,8 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "id hijack",
-			seed: func(s *BookStore) {
-				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(s book.Repository) {
+				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       `{"id":999,"title":"B","author":"Y","year":2016}`,
@@ -257,7 +259,7 @@ func TestUpdateBookHandler(t *testing.T) {
 			}
 
 			if tt.wantStatus == http.StatusOK {
-				var got Book
+				var got book.Book
 				if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 					t.Fatalf("response is not valid JSON: %v", err)
 				}
@@ -303,15 +305,15 @@ func TestDeleteBookHandler(t *testing.T) {
 
 	tests := []struct {
 		name       string // subtest 名，會顯示喺 go test -v 度
-		seed       func(s *BookStore)
+		seed       func(s book.Repository)
 		path       string
 		body       string
 		wantStatus int
 	}{
 		{
 			name: "normal delete",
-			seed: func(s *BookStore) {
-				s.Create(Book{BaseBook: BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(s book.Repository) {
+				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       "",
@@ -319,7 +321,7 @@ func TestDeleteBookHandler(t *testing.T) {
 		},
 		{
 			name: "uri id is not a valid integer",
-			seed: func(s *BookStore) {
+			seed: func(s book.Repository) {
 			},
 			path:       "/books/abc",
 			body:       "",

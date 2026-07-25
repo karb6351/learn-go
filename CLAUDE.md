@@ -16,11 +16,11 @@
 
 ## 常用 commands
 
-- 跑 server：`go run .`（port 8089；留意舊 process 可能霸住個 port）
+- 跑 server：`go run ./cmd/api`（port 8089；留意舊 process 可能霸住個 port）
 - 驗收：`go vet ./... && go test ./...`
 - Test suite 可能**刻意處於紅色狀態**（red-green-refactor 嘅 red）— 睇 LEARNING.md 判斷係咪預期內
 
 ## 慣例
 
-- 全部 code 喺 root 嘅 `package main`（未拆 package — 拆 project layout 係未來章節）
+- Project layout（第六章拆好）：`cmd/api`（wiring）、`internal/book`（domain + 兩個 store + contract suite）、`internal/apperr`（error 家族）、`internal/api`（handlers + middleware）；依賴方向 `main → api → book → apperr`，唔准倒流
 - Code comment 用廣東話寫教學註解 — 呢個係特登嘅，係教材一部分，唔好「執靚」佢

@@ -12,7 +12,8 @@
 - [x] 第 4.5 章：Generic error handling（id validation 統一 + contract tests + 完工註解 ✅）
 - [x] 第 4.9 章（bonus）：Error 家族 — generic `ErrNotFound` + `%w` + `ResourceNotFoundError`/`Unwrap` 橋樑 ✅
 - [x] 第五章：GORM + SQLite（repository interface / persistence / shared contract suite，全綠 ✅）
-- [ ] **第六章（未揀）：Project layout 拆 package / 其他 middleware（auth / logging / rate limit）** ⬅ 下一步
+- [x] 第六章：Project layout — `cmd/api` + `internal/{book,apperr,api}`，依賴一條直線 ✅
+- [ ] **第七章（未揀）：其他 middleware（auth / logging / rate limit）/ pagination / graceful shutdown** ⬅ 下一步
 
 ## ✅ 第五章任務（任務 1–4 完成）
 
@@ -28,18 +29,18 @@ Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而�
 
 驗收照舊：`go vet ./... && go test ./...` 全綠。
 
-## File 結構
+## File 結構（第六章拆完）
 
-| File | 角色 | 對應舊世界 |
-|---|---|---|
-| `main.go` | wiring + `setupRouter()`（抽出嚟先測到） | NestJS module / TestingModule |
-| `book.go` | `BaseBook`/`Book` model + in-memory store (mutex) | Entity + Repository |
-| `handlers.go` | HTTP handlers + `BookInput` DTO | Controller + DTO |
-| `middleware.go` | `ErrorHandler()` — 全 API error 出口（translation switch 完工，有完工版教學註解） | Laravel Handler::render / NestJS exception filter |
-| `gorm_store.go` | `GormBookStore` — GORM + SQLite store（五個 CRUD 完成） | Eloquent model / TypeORM repository |
-| `*_test.go` | shared repository contract suite + httptest handler tests | PHPUnit / Jest + supertest |
+| 位置 | Package | 角色 | 對應舊世界 |
+|---|---|---|---|
+| `cmd/api/main.go` | `main` | 貧血 wiring：開 store → `api.SetupRouter` → `Run` | NestJS bootstrap |
+| `internal/book/` | `book` | `Book` model、`Repository` interface、`MemoryStore`、`GormStore`、contract suite | domain module（entity + repository） |
+| `internal/apperr/` | `apperr` | `ErrNotFound` + `ResourceNotFoundError` error 家族（跨 domain 基建） | HttpException 家族嘅 domain 版 |
+| `internal/api/` | `api` | handlers、`BookInput` DTO、`ErrorHandler` middleware、`SetupRouter`、httptest tests | Controller + exception filter |
 
-跑 server：`go run .`（port 8089）；跑 test：`go test -v ./...`
+依賴方向：`main → api → book → apperr`（一條直線，冇圈）
+
+跑 server：`go run ./cmd/api`（port 8089）；跑 test：`go test -v ./...`
 
 ## 已學概念速查（每個都親手撞過／答過問題）
 
@@ -84,6 +85,15 @@ Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而�
 - 多條件 error handling 寫完用 **truth table 過一次**（每個情況 × 應該回乜 × 實際回乜）— 靠倒模句子執 code 係會將啲括號執錯位
 - `main()` 起場失敗用 `log.Fatal(err)` — server 未起，冇 client 要靚 response，全 project 唯一「直接死」嘅位
 - SQLite = 一個 file 就係成個 DB：`sqlite3 books.db "select..."` 直讀，繞過 server 驗 persistence 係最狠嘅證據
+
+**Project layout（第六章新增）**
+- Package 係按 **domain／依賴邊界**分，唔係按技術類型（Laravel `Controllers/`、`Models/` 抽屜 ✗；NestJS domain module ✓）；一個 folder = 一個 package
+- 大細楷 = exported/unexported，拆 package 逼你逐個 identifier 決定「API 定內臟」— 特登唔升嘅先係好設計（`books` map、`mu`、`errorTagMessages` 全部收埋）
+- `internal/` = compiler 執法嘅 module 私有領域；`cmd/<app>/main.go` = 貧血 wiring 慣例
+- Package 命名：短、細楷、講「提供乜」；`global`/`common`/`utils` = 雜物房反 pattern。合法 shared package（`apperr` 出世記）係被逼搬出嚟：內聚單一 + 兩個 domain 真係爭緊先抽 — 唔係預留
+- 口吃規則：package 名已提供 context — `book.BookRepository` → `book.Repository`、`book.GormBookStore` → `book.GormStore`
+- Import cycle 靠依賴方向設計避免：`main → api → book → apperr` 一條直線；interface 擺 `book`（而唔係 consumer `api`）係為咗俾 contract suite + 兩個 store 指名用，trade-off 講得出就得
+- Module path（`go.mod` 第一行）係所有 internal import 嘅前綴
 
 **Testing（第五章新增）**
 - Interface compliance suite：測試針對 `BookRepository` contract 寫一次，兩個 implementation 各自注入 factory；對應舊世界嘅 repository contract / driver conformance tests
