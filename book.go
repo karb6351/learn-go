@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -76,6 +77,10 @@ func (s *BookStore) List() ([]Book, error) {
 	for _, b := range s.books {
 		result = append(result, b)
 	}
+	// sort the result slice by id
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
 	return result, nil
 }
 

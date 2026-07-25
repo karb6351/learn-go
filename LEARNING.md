@@ -24,7 +24,7 @@
 
 Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而且唔重複。Delete setup 回傳實際 `created.ID`，成功後再 `Get` 驗證資料真係消失；setup 明文接收最內層 subtest 嘅 `t`，避免 `Fatalf` 錯用 parent test。
 
-目前共用 suite 覆蓋 Create、Get/not-found、Delete/not-found。下一個可選小練習：補 List 同 Update，令 `BookRepository` 五個 methods 都有 shared contract coverage。
+共用 suite 五個 method 齊腳 ✅：Create、Get（含 not-found + As 攞 field）、List（空 + 多本 + 順序 contract）、Update（expected 兩炮 + postcondition Get + id hijack）、Delete（含 postcondition）。List 順序升做 contract（按 ID 升序）：mem store `sort.Slice`、GORM `Order("id ASC")` 明文承諾。
 
 驗收照舊：`go vet ./... && go test ./...` 全綠。
 
@@ -92,6 +92,10 @@ Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而�
 - Shared contract 唔好承諾 implementation detail：ID 只驗正數兼唯一，唔假設一定由 1 開始；刪除用 Create 實際回傳嘅 ID
 - Command 成功唔等於 state 正確：Delete 回 nil 後再 Get，驗證 postcondition 真係 `ErrNotFound`，先捉到「假成功／刪錯資料」
 - Nested subtest helper 要收最內層嘅 `*testing.T`：`FailNow`/`Fatalf` 只可以由執行該 test 嘅 goroutine 呼叫，唔好 closure 捕捉 parent `t`
+- **Flaky test**：Go map iteration order 係刻意隨機化（防止順序變隱形 contract）— test assert `books[0]` 就係將順序寫入 contract，冇 implementation 承諾過就會間歇死；抽打隨機蟲用 `go test -count=30`，一次綠對付唔到佢
+- 順序要就正式升做 contract（兩個 implementation 都要明文承諾：mem `sort.Slice` / GORM `Order`），要就 test 讓步只驗 set membership — 唔可以「test 想要但冇人承諾」
+- GORM chain 有分**配置**（`Where`/`Order`/`Limit`）同**收尾**（`Find`/`First`/`Save`）：收尾嗰下 SQL 已射出，`Find(...).Order(...)` 個 `Order` 係 no-op — 當時 test 照綠係 SQLite rowid 自然順序賞面（綠 ≠ 啱，again）
+- 醫紅嘅鐵律：fix 唔可以係「令佢唔紅」，要係「令佢驗啱嘢」— 剷 assertion 醫紅 = 閹咗個 test（`update` 一度連「冇 update 過」都放行）；紅咗第一條問題係「邊個講大話 — code 定 test？」兩個獨立 implementation 一齊以同一方式 fail → 疑犯係 test
 
 **Testing（4.5 章新增）**
 - 「碰巧 pass」再現：copy-paste test 冇改 method，DELETE test 全程打緊 GET 照樣全綠 — pass 唔代表 test 緊你以為嗰樣嘢；新 test case 要親眼見過佢紅（red-green 嘅 red 係證據）

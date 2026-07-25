@@ -43,7 +43,7 @@ func (s *GormBookStore) Create(b Book) (Book, error) {
 
 func (s *GormBookStore) List() ([]Book, error) {
 	var books []Book
-	if err := s.db.Find(&books).Error; err != nil {
+	if err := s.db.Order("id ASC").Find(&books).Error; err != nil {
 		return nil, err
 	}
 	return books, nil
