@@ -13,7 +13,8 @@
 - [x] 第 4.9 章（bonus）：Error 家族 — generic `ErrNotFound` + `%w` + `ResourceNotFoundError`/`Unwrap` 橋樑 ✅
 - [x] 第五章：GORM + SQLite（repository interface / persistence / shared contract suite，全綠 ✅）
 - [x] 第六章：Project layout — `cmd/api` + `internal/{book,apperr,api}`，依賴一條直線 ✅
-- [ ] **第七章（未揀）：其他 middleware（auth / logging / rate limit）/ pagination / graceful shutdown** ⬅ 下一步
+- [x] 第七章：Pagination — `ListParams`/`Page` contract、offset 分頁、query binding + defaults、Laravel envelope ✅
+- [ ] **第八章（未揀）：graceful shutdown（goroutine/channel/context 入門）/ 其他 middleware（auth / logging / rate limit）** ⬅ 下一步
 
 ## ✅ 第五章任務（任務 1–4 完成）
 
@@ -85,6 +86,16 @@ Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而�
 - 多條件 error handling 寫完用 **truth table 過一次**（每個情況 × 應該回乜 × 實際回乜）— 靠倒模句子執 code 係會將啲括號執錯位
 - `main()` 起場失敗用 `log.Fatal(err)` — server 未起，冇 client 要靚 response，全 project 唯一「直接死」嘅位
 - SQLite = 一個 file 就係成個 DB：`sqlite3 books.db "select..."` 直讀，繞過 server 驗 persistence 係最狠嘅證據
+
+**Pagination（第七章新增）**
+- Contract 先行：default（page=1/limit=10）、上限（`max=100` = 自助 DoS 掣）、超範圍 = 空頁唔係 error（zero value 哲學）、`Total` 永遠全表數 — 全部寫入 `repository.go` 註解做正式契約，suite 逼供
+- 入參用 struct（`ListParams`）唔用散裝 int：第日加 sort/filter 係加 field 唔使 domino；出參 `Page{Items, Total}` 一件過
+- `ShouldBindQuery` + `form:"page,default=1"`：query binding 世界嘅「absent vs zero」由 `default` tag 分居 — 冇佢 bare `GET /books` 會 422（zero value 又一案發現場）
+- Off-by-one 係分頁頭號蟲：offset = `(page-1)*limit`，記住 `*` 先過 `-` — 冇括號嗰條式 page=1 時負 offset 被 GORM 好心當冇事，`Page: 1` 嘅 test 永遠發現唔到，必須有「第二頁」test case
+- **nil slice vs 空 slice**：`len`/`range` 眼中孖生，`json.Marshal` 眼中一個 `null` 一個 `[]` — 出街嘅 slice 開波用 `[]T{}`，suite 加 `Items != nil` 鎖
+- GORM `Count` 要 `Model()` 指定表、要 `*int64`（自己 `int()` 轉返）；total 同攞頁係兩條 query
+- Domain type 唔着 JSON 衫：envelope（`data`/`meta`）喺 handler 砌 `gin.H`，`book.Page` 零 HTTP 知識 — 同「repository 唔識 status code」同一條家規；`meta` echo 生效值等 client 知 default 發生咗
+- Debug 判案二定律（今章兩隻蟲各示範一次）：兩個 implementation 齊 fail 同一 test → 疑犯係 test；一過一唔過 → 疑犯係唔過嗰個 implementation
 
 **Project layout（第六章新增）**
 - Package 係按 **domain／依賴邊界**分，唔係按技術類型（Laravel `Controllers/`、`Models/` 抽屜 ✗；NestJS domain module ✓）；一個 folder = 一個 package

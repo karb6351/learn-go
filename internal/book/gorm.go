@@ -43,12 +43,21 @@ func (s *GormStore) Create(b Book) (Book, error) {
 	return b, nil
 }
 
-func (s *GormStore) List() ([]Book, error) {
-	var books []Book
-	if err := s.db.Order("id ASC").Find(&books).Error; err != nil {
-		return nil, err
+func (s *GormStore) List(p ListParams) (Page, error) {
+	var books []Book = make([]Book, 0)
+	var total int64
+	if err := s.db.Model(&Book{}).Count(&total).Error; err != nil {
+		return Page{}, err
 	}
-	return books, nil
+	if total == 0 {
+		return Page{Items: books, Total: 0}, nil
+	}
+
+	if err := s.db.Order("id ASC").Offset((p.Page - 1) * p.Limit).Limit(p.Limit).Find(&books).Error; err != nil {
+		return Page{}, err
+	}
+
+	return Page{Items: books, Total: int(total)}, nil
 }
 
 func (s *GormStore) Get(id int) (Book, error) {

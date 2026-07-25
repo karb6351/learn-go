@@ -23,12 +23,15 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 
 	t.Run("list returns empty slice", func(t *testing.T) {
 		store := factory(t)
-		books, err := store.List()
+		pageResult, err := store.List(ListParams{Page: 1, Limit: 10})
 		if err != nil {
 			t.Fatalf("List() returned unexpected error: %v", err)
 		}
-		if len(books) != 0 {
-			t.Errorf("List() = %v, want []", books)
+		if pageResult.Total != 0 {
+			t.Errorf("List() = %v, want []", pageResult.Total)
+		}
+		if len(pageResult.Items) != 0 {
+			t.Errorf("List() = %v, want []", len(pageResult.Items))
 		}
 	})
 
@@ -42,18 +45,48 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) returned unexpected error: %v", err)
 		}
-		books, err := store.List()
+		_, err = store.Create(Book{BaseBook: BaseBook{Title: "C", Author: "Z", Year: 2022}})
+		if err != nil {
+			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: C, Author: Z, Year: 2022}}) returned unexpected error: %v", err)
+		}
+		pageResult, err := store.List(ListParams{Page: 1, Limit: 10})
 		if err != nil {
 			t.Fatalf("List() returned unexpected error: %v", err)
 		}
-		if len(books) != 2 {
-			t.Fatalf("List() = %v, want 2", len(books))
+		if len(pageResult.Items) != 3 {
+			t.Fatalf("List() = %v, want 3", len(pageResult.Items))
 		}
-		if books[0].Title != "A" {
-			t.Errorf("List() = %v, want [A, B]", books[0].Title)
+		if pageResult.Items[0].Title != "A" {
+			t.Errorf("List() = %v, want [A, B, C]", pageResult.Items[0].Title)
 		}
-		if books[1].Title != "B" {
-			t.Errorf("List() = %v, want [A, B]", books[1].Title)
+		if pageResult.Items[1].Title != "B" {
+			t.Errorf("List() = %v, want [A, B, C]", pageResult.Items[1].Title)
+		}
+		if pageResult.Items[2].Title != "C" {
+			t.Errorf("List() = %v, want [A, B, C]", pageResult.Items[2].Title)
+		}
+		if pageResult.Total != 3 {
+			t.Errorf("List() = %v, want 3", pageResult.Total)
+		}
+		pageResult, err = store.List(ListParams{Page: 2, Limit: 2})
+		if err != nil {
+			t.Fatalf("List(Page: 2, Limit: 2) returned unexpected error: %v", err)
+		}
+		if len(pageResult.Items) != 1 {
+			t.Errorf("List(Page: 2, Limit: 2) = %v, want 1", len(pageResult.Items))
+		}
+		if pageResult.Total != 3 {
+			t.Errorf("List(Page: 2, Limit: 2) = %v, want 3", pageResult.Total)
+		}
+		pageResult, err = store.List(ListParams{Page: 99, Limit: 10})
+		if err != nil {
+			t.Fatalf("List(Page: 99, Limit: 10) returned unexpected error: %v", err)
+		}
+		if len(pageResult.Items) != 0 {
+			t.Errorf("List(Page: 99, Limit: 10) = %v, want 0", len(pageResult.Items))
+		}
+		if pageResult.Total != 3 {
+			t.Errorf("List(Page: 99, Limit: 10) = %v, want 3", pageResult.Total)
 		}
 	})
 

@@ -22,6 +22,11 @@ type BookInput struct {
 	book.BaseBook
 }
 
+type BookListParams struct {
+	Page  int `form:"page,default=1" binding:"min=1"`
+	Limit int `form:"limit,default=10" binding:"min=1,max=100"`
+}
+
 func NewBookHandler(store book.Repository) *BookHandler {
 	return &BookHandler{store: store}
 }
@@ -51,13 +56,29 @@ func (h *BookHandler) Create(c *gin.Context) {
 
 // GET /books
 func (h *BookHandler) List(c *gin.Context) {
-	books, err := h.store.List()
+	var params BookListParams
+	if err := c.ShouldBindQuery(&params); err != nil {
+		c.Error(err)
+		c.Abort()
+		return
+	}
+	pageResult, err := h.store.List(book.ListParams{
+		Page:  params.Page,
+		Limit: params.Limit,
+	})
 	if err != nil {
 		c.Error(err)
 		c.Abort()
 		return
 	}
-	c.JSON(http.StatusOK, books)
+	c.JSON(http.StatusOK, gin.H{
+		"data": pageResult.Items,
+		"meta": gin.H{
+			"total": pageResult.Total,
+			"page":  params.Page,
+			"limit": params.Limit,
+		},
+	})
 }
 
 // GET /books/:id

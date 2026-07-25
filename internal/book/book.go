@@ -49,19 +49,29 @@ func (s *MemoryStore) Create(b Book) (Book, error) {
 }
 
 // List 回傳所有書。用 RLock 因為只係讀，多個 reader 可以並行。
-func (s *MemoryStore) List() ([]Book, error) {
+func (s *MemoryStore) List(p ListParams) (Page, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make([]Book, 0, len(s.books))
-	for _, b := range s.books {
-		result = append(result, b)
+	start := (p.Page - 1) * p.Limit
+	total := len(s.books)
+	end := start + p.Limit
+	if end > total {
+		end = total
 	}
-	// sort the result slice by id
+	result := make([]Book, 0, len(s.books))
+	for _, book := range s.books {
+		result = append(result, book)
+	}
+	// sort the full slice of books by id
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].ID < result[j].ID
 	})
-	return result, nil
+
+	if start >= len(result) {
+		return Page{Items: []Book{}, Total: total}, nil
+	}
+	return Page{Items: result[start:end], Total: total}, nil
 }
 
 // Get 回傳單一本書。Go 嘅慣例係回傳 (value, error) 一對。

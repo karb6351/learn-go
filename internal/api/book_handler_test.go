@@ -41,6 +41,58 @@ func doRequest(t *testing.T, router *gin.Engine, method, path, body string) *htt
 	return rec
 }
 
+func TestListBookHandler(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	rec := doRequest(t, router, http.MethodGet, "/books", "")
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp struct {
+		Data []book.Book `json:"data"`
+		Meta struct {
+			Total int `json:"total"`
+			Page  int `json:"page"`
+			Limit int `json:"limit"`
+		} `json:"meta"`
+	}
+
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response is not valid JSON: %v; body: %s", err, rec.Body.String())
+	}
+	if resp.Meta.Total != 0 {
+		t.Errorf("total = %d, want 0", resp.Meta.Total)
+	}
+	if len(resp.Data) != 0 {
+		t.Errorf("data = %v, want []", resp.Data)
+	}
+	if resp.Meta.Page != 1 {
+		t.Errorf("page = %d, want 1", resp.Meta.Page)
+	}
+	if resp.Meta.Limit != 10 {
+		t.Errorf("limit = %d, want 10", resp.Meta.Limit)
+	}
+}
+
+func TestListBookHandlerValidation(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	rec := doRequest(t, router, http.MethodGet, "/books?page=0", "")
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+	}
+
+	var resp struct {
+		Message string              `json:"message"`
+		Errors  map[string][]string `json:"errors"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response is not valid JSON: %v; body: %s", err, rec.Body.String())
+	}
+}
 func TestCreateBookHandler(t *testing.T) {
 	router, _ := newTestRouter(t)
 
