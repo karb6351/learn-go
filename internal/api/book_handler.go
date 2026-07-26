@@ -43,7 +43,7 @@ func (h *BookHandler) Create(c *gin.Context) {
 		return
 	}
 
-	created, err := h.store.Create(book.Book{
+	created, err := h.store.Create(c.Request.Context(), book.Book{
 		BaseBook: input.BaseBook,
 	})
 	if err != nil {
@@ -62,7 +62,7 @@ func (h *BookHandler) List(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	pageResult, err := h.store.List(book.ListParams{
+	pageResult, err := h.store.List(c.Request.Context(), book.ListParams{
 		Page:  params.Page,
 		Limit: params.Limit,
 	})
@@ -91,7 +91,7 @@ func (h *BookHandler) Get(c *gin.Context) {
 		return
 	}
 
-	book, err := h.store.Get(paramInput.ID)
+	book, err := h.store.Get(c.Request.Context(), paramInput.ID)
 	if err != nil {
 		c.Error(err)
 		c.Abort()
@@ -121,7 +121,7 @@ func (h *BookHandler) Update(c *gin.Context) {
 		return // Gin 唔會自動停，一定要自己 return！
 	}
 
-	updated, err := h.store.Update(id, book.Book{
+	updated, err := h.store.Update(c.Request.Context(), id, book.Book{
 		BaseBook: input.BaseBook,
 	})
 
@@ -146,7 +146,7 @@ func (h *BookHandler) Delete(c *gin.Context) {
 
 	id := paramInput.ID
 
-	if err := h.store.Delete(id); err != nil {
+	if err := h.store.Delete(c.Request.Context(), id); err != nil {
 		c.Error(err)
 		c.Abort()
 		return

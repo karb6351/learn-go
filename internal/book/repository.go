@@ -1,5 +1,7 @@
 package book
 
+import "context"
+
 // ListParams 係 List 嘅入參 struct。
 // 用 struct 唔用 (page, limit int)：第日加 sort/filter 係加 field，
 // 唔使改 signature（= 唔使全 project domino）。
@@ -22,9 +24,9 @@ type Page struct {
 //   - page 超晒範圍 → Items 空、Total 照回全表數（zero value 哲學，唔係 error）
 //   - 順序照舊承諾：按 ID 升序
 type Repository interface {
-	Create(b Book) (Book, error)
-	List(p ListParams) (Page, error)
-	Get(id int) (Book, error)
-	Update(id int, b Book) (Book, error)
-	Delete(id int) error
+	Create(ctx context.Context, b Book) (Book, error)
+	List(ctx context.Context, p ListParams) (Page, error)
+	Get(ctx context.Context, id int) (Book, error)
+	Update(ctx context.Context, id int, b Book) (Book, error)
+	Delete(ctx context.Context, id int) error
 }

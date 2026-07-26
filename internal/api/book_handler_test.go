@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -211,15 +212,15 @@ func TestGetBookHandler(t *testing.T) {
 
 	tests := []struct {
 		name       string // subtest 名，會顯示喺 go test -v 度
-		seed       func(s book.Repository)
+		seed       func(ctx context.Context, s book.Repository)
 		path       string
 		body       string
 		wantStatus int
 	}{
 		{
 			name: "normal get",
-			seed: func(s book.Repository) {
-				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(ctx context.Context, s book.Repository) {
+				s.Create(ctx, book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       "",
@@ -227,7 +228,7 @@ func TestGetBookHandler(t *testing.T) {
 		},
 		{
 			name: "uri id is not a valid integer",
-			seed: func(s book.Repository) {
+			seed: func(ctx context.Context, s book.Repository) {
 			},
 			path:       "/books/not-a-number",
 			body:       "",
@@ -235,7 +236,7 @@ func TestGetBookHandler(t *testing.T) {
 		},
 		{
 			name: "book not found",
-			seed: func(s book.Repository) {
+			seed: func(ctx context.Context, s book.Repository) {
 			},
 			path:       "/books/999",
 			body:       "",
@@ -246,7 +247,7 @@ func TestGetBookHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
 			router, store := newTestRouter(t)
-			tt.seed(store)
+			tt.seed(context.Background(), store)
 
 			rec := doRequest(t, router, http.MethodGet, tt.path, tt.body, nil)
 			if rec.Code != tt.wantStatus {
@@ -269,15 +270,15 @@ func TestGetBookHandler(t *testing.T) {
 func TestUpdateBookHandler(t *testing.T) {
 	tests := []struct {
 		name       string // subtest 名，會顯示喺 go test -v 度
-		seed       func(s book.Repository)
+		seed       func(ctx context.Context, s book.Repository)
 		path       string
 		body       string
 		wantStatus int
 	}{
 		{
 			name: "normal update",
-			seed: func(s book.Repository) {
-				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(ctx context.Context, s book.Repository) {
+				s.Create(ctx, book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       `{"title":"B","author":"Y","year":2016}`,
@@ -285,7 +286,7 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "missing book",
-			seed: func(s book.Repository) {
+			seed: func(ctx context.Context, s book.Repository) {
 			},
 			path:       "/books/42",
 			body:       `{"title":"B","author":"Y","year":2016}`,
@@ -293,7 +294,7 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "uri id is not a valid integer",
-			seed: func(s book.Repository) {
+			seed: func(ctx context.Context, s book.Repository) {
 			},
 			path:       "/books/not-a-number",
 			body:       "",
@@ -301,8 +302,8 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "missing author",
-			seed: func(s book.Repository) {
-				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(ctx context.Context, s book.Repository) {
+				s.Create(ctx, book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       `{"title":"B","year":2016}`,
@@ -311,8 +312,8 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "year too old",
-			seed: func(s book.Repository) {
-				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(ctx context.Context, s book.Repository) {
+				s.Create(ctx, book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       `{"title":"B","author":"Y","year":3000}`,
@@ -321,8 +322,8 @@ func TestUpdateBookHandler(t *testing.T) {
 		},
 		{
 			name: "id hijack",
-			seed: func(s book.Repository) {
-				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(ctx context.Context, s book.Repository) {
+				s.Create(ctx, book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       `{"id":999,"title":"B","author":"Y","year":2016}`,
@@ -333,7 +334,7 @@ func TestUpdateBookHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
 			router, store := newTestRouter(t)
-			tt.seed(store)
+			tt.seed(context.Background(), store)
 
 			rec := doRequest(t, router, http.MethodPut, tt.path, tt.body, map[string]string{"Authorization": "Bearer 1234567890"})
 			if rec.Code != tt.wantStatus {
@@ -387,15 +388,15 @@ func TestDeleteBookHandler(t *testing.T) {
 
 	tests := []struct {
 		name       string // subtest 名，會顯示喺 go test -v 度
-		seed       func(s book.Repository)
+		seed       func(ctx context.Context, s book.Repository)
 		path       string
 		body       string
 		wantStatus int
 	}{
 		{
 			name: "normal delete",
-			seed: func(s book.Repository) {
-				s.Create(book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
+			seed: func(ctx context.Context, s book.Repository) {
+				s.Create(ctx, book.Book{BaseBook: book.BaseBook{Title: "Book 1", Author: "Author 1", Year: 2015}})
 			},
 			path:       "/books/1",
 			body:       "",
@@ -403,7 +404,7 @@ func TestDeleteBookHandler(t *testing.T) {
 		},
 		{
 			name: "uri id is not a valid integer",
-			seed: func(s book.Repository) {
+			seed: func(ctx context.Context, s book.Repository) {
 			},
 			path:       "/books/abc",
 			body:       "",
@@ -414,7 +415,7 @@ func TestDeleteBookHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
 			router, store := newTestRouter(t)
-			tt.seed(store)
+			tt.seed(context.Background(), store)
 
 			rec := doRequest(t, router, http.MethodDelete, tt.path, tt.body, map[string]string{"Authorization": "Bearer 1234567890"})
 			if rec.Code != tt.wantStatus {

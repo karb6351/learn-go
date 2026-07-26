@@ -6,6 +6,7 @@ package book
 // error 照舊行 (value, error) 雙回傳嗰套。
 
 import (
+	"context"
 	"errors"
 
 	"gorm.io/driver/sqlite"
@@ -36,14 +37,14 @@ func NewGormStore(path string) (*GormStore, error) {
 	return &GormStore{db: db}, nil
 }
 
-func (s *GormStore) Create(b Book) (Book, error) {
-	if err := s.db.Create(&b).Error; err != nil {
+func (s *GormStore) Create(ctx context.Context, b Book) (Book, error) {
+	if err := s.db.WithContext(ctx).Create(&b).Error; err != nil {
 		return Book{}, err
 	}
 	return b, nil
 }
 
-func (s *GormStore) List(p ListParams) (Page, error) {
+func (s *GormStore) List(ctx context.Context, p ListParams) (Page, error) {
 	var books []Book = make([]Book, 0)
 	var total int64
 	if err := s.db.Model(&Book{}).Count(&total).Error; err != nil {
@@ -60,7 +61,7 @@ func (s *GormStore) List(p ListParams) (Page, error) {
 	return Page{Items: books, Total: int(total)}, nil
 }
 
-func (s *GormStore) Get(id int) (Book, error) {
+func (s *GormStore) Get(ctx context.Context, id int) (Book, error) {
 	var b Book
 	if err := s.db.First(&b, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -71,7 +72,7 @@ func (s *GormStore) Get(id int) (Book, error) {
 	return b, nil
 }
 
-func (s *GormStore) Update(id int, b Book) (Book, error) {
+func (s *GormStore) Update(ctx context.Context, id int, b Book) (Book, error) {
 	var existingBook Book
 	if err := s.db.First(&existingBook, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -86,7 +87,7 @@ func (s *GormStore) Update(id int, b Book) (Book, error) {
 	return existingBook, nil
 }
 
-func (s *GormStore) Delete(id int) error {
+func (s *GormStore) Delete(ctx context.Context, id int) error {
 	result := s.db.Delete(&Book{}, id)
 	if err := result.Error; err != nil {
 		return err

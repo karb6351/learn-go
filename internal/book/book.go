@@ -1,6 +1,7 @@
 package book
 
 import (
+	"context"
 	"sort"
 	"sync"
 
@@ -39,7 +40,7 @@ func NewMemoryStore() *MemoryStore {
 }
 
 // Create 接收一本冇 ID 嘅書，assign ID 之後存起佢。
-func (s *MemoryStore) Create(b Book) (Book, error) {
+func (s *MemoryStore) Create(ctx context.Context, b Book) (Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b.ID = s.nextID
@@ -49,7 +50,7 @@ func (s *MemoryStore) Create(b Book) (Book, error) {
 }
 
 // List 回傳所有書。用 RLock 因為只係讀，多個 reader 可以並行。
-func (s *MemoryStore) List(p ListParams) (Page, error) {
+func (s *MemoryStore) List(ctx context.Context, p ListParams) (Page, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -75,7 +76,7 @@ func (s *MemoryStore) List(p ListParams) (Page, error) {
 }
 
 // Get 回傳單一本書。Go 嘅慣例係回傳 (value, error) 一對。
-func (s *MemoryStore) Get(id int) (Book, error) {
+func (s *MemoryStore) Get(ctx context.Context, id int) (Book, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -87,7 +88,7 @@ func (s *MemoryStore) Get(id int) (Book, error) {
 }
 
 // Update 整本替換（PUT 語義）。
-func (s *MemoryStore) Update(id int, b Book) (Book, error) {
+func (s *MemoryStore) Update(ctx context.Context, id int, b Book) (Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -100,7 +101,7 @@ func (s *MemoryStore) Update(id int, b Book) (Book, error) {
 }
 
 // Delete 刪除一本書。
-func (s *MemoryStore) Delete(id int) error {
+func (s *MemoryStore) Delete(ctx context.Context, id int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

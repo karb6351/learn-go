@@ -16,7 +16,8 @@
 - [x] 第七章：Pagination — `ListParams`/`Page` contract、offset 分頁、query binding + defaults、Laravel envelope ✅
 - [x] 第八章：Auth middleware — Bearer key、route group 局部上鎖、request phase、`errUnauthenticated` → 401 ✅
 - [x] 第九章：Graceful shutdown — goroutine/channel/context 初體驗、`http.Server` + `Shutdown(ctx)`、`/slow` 實驗實證 ✅
-- [ ] **第十章（未揀）：logging / rate limit（channel 再深造）/ context 貫穿 request（`c.Request.Context()` 落到 GORM）** ⬅ 下一步
+- [x] 第十章：Context 貫穿 request — `ctx` 第一參數 idiom、`WithContext` 落 GORM、client 斷線實驗實證、`select` 初登場 ✅
+- [ ] **第十一章（未揀）：transaction（醫殭屍書 TOCTOU bug，ctx 已備）/ rate limit（channel 深造）/ logging** ⬅ 下一步
 
 ## ✅ 第五章任務（任務 1–4 完成）
 
@@ -88,6 +89,16 @@ Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而�
 - 多條件 error handling 寫完用 **truth table 過一次**（每個情況 × 應該回乜 × 實際回乜）— 靠倒模句子執 code 係會將啲括號執錯位
 - `main()` 起場失敗用 `log.Fatal(err)` — server 未起，冇 client 要靚 response，全 project 唯一「直接死」嘅位
 - SQLite = 一個 file 就係成個 DB：`sqlite3 books.db "select..."` 直讀，繞過 server 驗 persistence 係最狠嘅證據
+
+**Context（第十章新增）**
+- **撞名陷阱**：Go `context.Context` ≠ React Context — React 嗰個係「派資料落 component 樹」（state 容器），Go 呢個係「派**停工令**落 call 樹」（警報線）；真・同款係 JS 嘅 **AbortController/AbortSignal**（`signal` 傳入 `fetch` ≈ `ctx` 傳入 function、`abort()` ≈ `cancel()`、`addEventListener('abort')` ≈ `<-ctx.Done()`）
+- Context = 取消訊號（主業）+ 死線（副業）+ `ctx.Value` 雜物袋（唔鼓勵 — 隱形依賴，只留俾 trace ID 類 metadata）
+- 樹狀繼承：`WithTimeout(parent)`/`WithCancel(parent)` 衍生，**父熄全族熄**；`net/http` 每個 request 自動開一張，client 斷線／request 完自動熄 — Gin 度攞：`c.Request.Context()`
+- Idiom 鐵律：**第一個參數、永遠叫 `ctx`、唔准收入 struct field** — 全 Go 生態統一；`context.Background()` = 樹根永不熄（test/main 用）、`context.TODO()` = 「將來應該駁真 ctx」嘅 placeholder
+- `ctx.Done()` 回一條 channel —「`<-` 一條管 = 等一件事」再應驗；`ctx.Err()` 講熄機原因
+- GORM `WithContext(ctx)` 將取消訊號一路駁落 DB driver — client 走咗，行到一半條 query 自動叫停
+- **`select` = channel 世界嘅 switch**：幾條管一齊等，邊條先有嘢行邊條 branch（實驗：五秒鬧鐘 vs `ctx.Done()` 鬥快）
+- 實驗實證：curl 一秒走人，server **同一秒**印「client 走咗」— 唔係等五秒鬧鐘
 
 **Goroutine / Channel / Shutdown（第九章新增）**
 - Goroutine = 平工人：`go f()` 即開即走；幾 KB 起跳開百萬條都得，M:N 織落真 thread；**main 一返全員陪葬**；Gin 每個 request 一條（∴ 第一章個 map 要 mutex）

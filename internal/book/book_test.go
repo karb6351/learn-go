@@ -10,6 +10,7 @@ package book
 //   t.Fatalf = 記低 fail，即刻停呢個 test（後面步驟冇意義時用）
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -23,7 +24,7 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 
 	t.Run("list returns empty slice", func(t *testing.T) {
 		store := factory(t)
-		pageResult, err := store.List(ListParams{Page: 1, Limit: 10})
+		pageResult, err := store.List(context.Background(), ListParams{Page: 1, Limit: 10})
 		if err != nil {
 			t.Fatalf("List() returned unexpected error: %v", err)
 		}
@@ -37,19 +38,19 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 
 	t.Run("list returns all books", func(t *testing.T) {
 		store := factory(t)
-		_, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+		_, err := store.Create(context.Background(), Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
 		}
-		_, err = store.Create(Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
+		_, err = store.Create(context.Background(), Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) returned unexpected error: %v", err)
 		}
-		_, err = store.Create(Book{BaseBook: BaseBook{Title: "C", Author: "Z", Year: 2022}})
+		_, err = store.Create(context.Background(), Book{BaseBook: BaseBook{Title: "C", Author: "Z", Year: 2022}})
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: C, Author: Z, Year: 2022}}) returned unexpected error: %v", err)
 		}
-		pageResult, err := store.List(ListParams{Page: 1, Limit: 10})
+		pageResult, err := store.List(context.Background(), ListParams{Page: 1, Limit: 10})
 		if err != nil {
 			t.Fatalf("List() returned unexpected error: %v", err)
 		}
@@ -68,7 +69,7 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 		if pageResult.Total != 3 {
 			t.Errorf("List() = %v, want 3", pageResult.Total)
 		}
-		pageResult, err = store.List(ListParams{Page: 2, Limit: 2})
+		pageResult, err = store.List(context.Background(), ListParams{Page: 2, Limit: 2})
 		if err != nil {
 			t.Fatalf("List(Page: 2, Limit: 2) returned unexpected error: %v", err)
 		}
@@ -78,7 +79,7 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 		if pageResult.Total != 3 {
 			t.Errorf("List(Page: 2, Limit: 2) = %v, want 3", pageResult.Total)
 		}
-		pageResult, err = store.List(ListParams{Page: 99, Limit: 10})
+		pageResult, err = store.List(context.Background(), ListParams{Page: 99, Limit: 10})
 		if err != nil {
 			t.Fatalf("List(Page: 99, Limit: 10) returned unexpected error: %v", err)
 		}
@@ -93,11 +94,11 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 	t.Run("create assigns IDs", func(t *testing.T) {
 		store := factory(t)
 
-		b1, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+		b1, err := store.Create(context.Background(), Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
 		}
-		b2, err := store.Create(Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
+		b2, err := store.Create(context.Background(), Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) returned unexpected error: %v", err)
 		}
@@ -114,12 +115,12 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 	t.Run("get returns stored book", func(t *testing.T) {
 		store := factory(t)
 
-		created, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+		created, err := store.Create(context.Background(), Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
 		}
 
-		got, err := store.Get(created.ID)
+		got, err := store.Get(context.Background(), created.ID)
 		if err != nil {
 			t.Fatalf("Get(%d) returned unexpected error: %v", created.ID, err)
 		}
@@ -134,7 +135,7 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 
 		var resourceNotFoundError *apperr.ResourceNotFoundError
 
-		_, err := store.Get(999)
+		_, err := store.Get(context.Background(), 999)
 		// 唔好淨係 check err != nil — 要 check 係「啱嗰種」error
 		if !errors.Is(err, apperr.ErrNotFound) {
 			t.Fatalf("Get(999) error = %v, want ErrNotFound", err)
@@ -153,18 +154,18 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 
 	t.Run("update returns stored book", func(t *testing.T) {
 		store := factory(t)
-		created, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+		created, err := store.Create(context.Background(), Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
 		}
 
-		updated, err := store.Update(created.ID, Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
+		updated, err := store.Update(context.Background(), created.ID, Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
 		if err != nil {
 			t.Fatalf("Update(%d, Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) returned unexpected error: %v", created.ID, err)
 		}
 		expected := Book{ID: created.ID, BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}}
 
-		got, err := store.Get(created.ID)
+		got, err := store.Get(context.Background(), created.ID)
 		if err != nil {
 			t.Fatalf("Get(%d) returned unexpected error: %v", created.ID, err)
 		}
@@ -178,11 +179,11 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 
 	t.Run("update book with id hijack", func(t *testing.T) {
 		store := factory(t)
-		created, err := store.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
+		created, err := store.Create(context.Background(), Book{BaseBook: BaseBook{Title: "A", Author: "X", Year: 2020}})
 		if err != nil {
 			t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X, Year: 2020}}) returned unexpected error: %v", err)
 		}
-		updated, err := store.Update(created.ID, Book{ID: 9999, BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
+		updated, err := store.Update(context.Background(), created.ID, Book{ID: 9999, BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
 		if err != nil {
 			t.Fatalf("Update(%d, Book{ID: 9999, BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) returned unexpected error: %v", created.ID, err)
 		}
@@ -194,7 +195,7 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 	t.Run("update missing book", func(t *testing.T) {
 		store := factory(t)
 		var resourceNotFoundError *apperr.ResourceNotFoundError
-		_, err := store.Update(999, Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
+		_, err := store.Update(context.Background(), 999, Book{BaseBook: BaseBook{Title: "B", Author: "Y", Year: 2021}})
 		if !errors.Is(err, apperr.ErrNotFound) {
 			t.Fatalf("Update(999, Book{BaseBook: BaseBook{Title: B, Author: Y, Year: 2021}}) error = %v, want ErrNotFound", err)
 		}
@@ -218,7 +219,7 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 			{
 				name: "existing book is deleted",
 				setup: func(t *testing.T, s Repository) int {
-					book, err := s.Create(Book{BaseBook: BaseBook{Title: "A", Author: "X"}})
+					book, err := s.Create(context.Background(), Book{BaseBook: BaseBook{Title: "A", Author: "X"}})
 					if err != nil {
 						t.Fatalf("Create(Book{BaseBook: BaseBook{Title: A, Author: X}}) returned unexpected error: %v", err)
 					}
@@ -238,12 +239,12 @@ func testBookRepository(t *testing.T, factory storeFactory) {
 			t.Run(tt.name, func(t *testing.T) { // t.Run = subtest，每個 case 獨立 pass/fail
 				store := factory(t)
 				id := tt.setup(t, store)
-				err := store.Delete(id)
+				err := store.Delete(context.Background(), id)
 				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("Delete(%d) error = %v, want %v", id, err, tt.wantErr)
 				}
 				if tt.wantErr == nil {
-					_, err := store.Get(id)
+					_, err := store.Get(context.Background(), id)
 					if !errors.Is(err, apperr.ErrNotFound) {
 						t.Errorf("Get(%d) error = %v, want ErrNotFound", id, err)
 					}
