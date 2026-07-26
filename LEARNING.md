@@ -14,7 +14,8 @@
 - [x] 第五章：GORM + SQLite（repository interface / persistence / shared contract suite，全綠 ✅）
 - [x] 第六章：Project layout — `cmd/api` + `internal/{book,apperr,api}`，依賴一條直線 ✅
 - [x] 第七章：Pagination — `ListParams`/`Page` contract、offset 分頁、query binding + defaults、Laravel envelope ✅
-- [ ] **第八章（未揀）：graceful shutdown（goroutine/channel/context 入門）/ 其他 middleware（auth / logging / rate limit）** ⬅ 下一步
+- [x] 第八章：Auth middleware — Bearer key、route group 局部上鎖、request phase、`errUnauthenticated` → 401 ✅
+- [ ] **第九章（未揀）：graceful shutdown（goroutine/channel/context 入門）/ logging / rate limit** ⬅ 下一步
 
 ## ✅ 第五章任務（任務 1–4 完成）
 
@@ -86,6 +87,16 @@ Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而�
 - 多條件 error handling 寫完用 **truth table 過一次**（每個情況 × 應該回乜 × 實際回乜）— 靠倒模句子執 code 係會將啲括號執錯位
 - `main()` 起場失敗用 `log.Fatal(err)` — server 未起，冇 client 要靚 response，全 project 唯一「直接死」嘅位
 - SQLite = 一個 file 就係成個 DB：`sqlite3 books.db "select..."` 直讀，繞過 server 驗 persistence 係最狠嘅證據
+
+**Auth middleware（第八章新增）**
+- Middleware factory：`Auth(key string) gin.HandlerFunc` — 收 config 回 middleware，closure 係個袋（= NestJS Guard 嘅 constructor injection，冇 DI 版）；config 旅程：env → `main`（冇 key = `log.Fatal`，唔准裸奔開張）→ `SetupRouter` → closure
+- Gin chain 係外面 for loop 推：純放行乜都唔使做，**要停必須 `c.Abort()`**、要留後着先 call `c.Next()`。同 Express 啱啱相反（Express 要自己 `next()` 交棒，唔交 = 吊死）— 危險方向唔同：Express 漏 next 蟲好快現形，**Gin 漏 Abort = 著住 401 衫入屋做嘢**（security hole）
+- Route group 局部上鎖：`books.Group("")` + `.Use(Auth(key))` 開子 group，「讀公開、寫上鎖」；小心分房 — 上鎖對象係 POST/PUT/DELETE 唔係 GET（試過裝反，變咗「睇書要證件、加書自由」）
+- 401 = unauthenticated（我唔識你），403 = forbidden（識你但你唔准）— 401 個官方名 "Unauthorized" 係 HTTP 史上出名嘅改錯名
+- Sentinel 嘅 scope 跟佢嘅「旅程」：`errUnauthenticated` 產同消都喺 `api` package，唔過邊界 → 細楷唔 export、唔使入 `apperr` — 同 `ErrNotFound`（跨 package）對比就明
+- `subtle.ConstantTimeCompare` 防 timing attack（`==` 逐 byte 比會漏時間差）；但佢**相等回 1** — 條件寫 `!= 0` 就係倒轉裝閘：啱 key 拒、錯 key 放，兩隻蟲（呢隻 + middleware 未加 401 分支）疊埋變「啱 key → 500」
+- `strings.CutPrefix` 拆 "Bearer " 前綴 — 又係 comma-ok 家族
+- Test helper 加 optional 參數：`doRequest(..., headers map[string]string)` 傳 `nil` 代表冇 — nil map 讀係安全嘅（第一章知識翻叮）
 
 **Pagination（第七章新增）**
 - Contract 先行：default（page=1/limit=10）、上限（`max=100` = 自助 DoS 掣）、超範圍 = 空頁唔係 error（zero value 哲學）、`Total` 永遠全表數 — 全部寫入 `repository.go` 註解做正式契約，suite 逼供

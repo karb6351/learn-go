@@ -25,26 +25,45 @@ func TestMain(m *testing.M) {
 func newTestRouter(t *testing.T) (*gin.Engine, book.Repository) {
 	t.Helper()
 	store := book.NewMemoryStore()
-	return SetupRouter(store), store
+	return SetupRouter(store, "1234567890"), store
 }
 
 // doRequest 模擬一次 HTTP request：
 //
 //	httptest.NewRecorder() = 假嘅 ResponseWriter，錄低 handler 寫咗啲乜
 //	router.ServeHTTP(...)  = 直接餵 request 入 router，全程 in-process
-func doRequest(t *testing.T, router *gin.Engine, method, path, body string) *httptest.ResponseRecorder {
+func doRequest(t *testing.T, router *gin.Engine, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec
 }
 
+func TestInvalidAuthorizationHeader(t *testing.T) {
+	router, _ := newTestRouter(t)
+
+	invalidTokenRequest := doRequest(t, router, http.MethodPost, "/books", "", map[string]string{"Authorization": "Bearer invalid_token"})
+
+	if invalidTokenRequest.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", invalidTokenRequest.Code, http.StatusUnauthorized)
+	}
+
+	noTokenRequest := doRequest(t, router, http.MethodPost, "/books", "", nil)
+
+	if noTokenRequest.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", noTokenRequest.Code, http.StatusUnauthorized)
+	}
+}
+
 func TestListBookHandler(t *testing.T) {
 	router, _ := newTestRouter(t)
 
-	rec := doRequest(t, router, http.MethodGet, "/books", "")
+	rec := doRequest(t, router, http.MethodGet, "/books", "", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -79,7 +98,7 @@ func TestListBookHandler(t *testing.T) {
 func TestListBookHandlerValidation(t *testing.T) {
 	router, _ := newTestRouter(t)
 
-	rec := doRequest(t, router, http.MethodGet, "/books?page=0", "")
+	rec := doRequest(t, router, http.MethodGet, "/books?page=0", "", nil)
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
@@ -93,7 +112,7 @@ func TestListBookHandlerValidation(t *testing.T) {
 		t.Fatalf("response is not valid JSON: %v; body: %s", err, rec.Body.String())
 	}
 
-	rec = doRequest(t, router, http.MethodGet, "/books?limit=101", "")
+	rec = doRequest(t, router, http.MethodGet, "/books?limit=101", "", nil)
 
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
@@ -103,11 +122,12 @@ func TestListBookHandlerValidation(t *testing.T) {
 		t.Fatalf("response is not valid JSON: %v; body: %s", err, rec.Body.String())
 	}
 }
+
 func TestCreateBookHandler(t *testing.T) {
 	router, _ := newTestRouter(t)
 
 	rec := doRequest(t, router, http.MethodPost, "/books",
-		`{"title":"The Go Programming Language","author":"Donovan","year":2015}`)
+		`{"title":"The Go Programming Language","author":"Donovan","year":2015}`, map[string]string{"Authorization": "Bearer 1234567890"})
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusCreated, rec.Body.String())
@@ -126,7 +146,7 @@ func TestCreateBookHandler(t *testing.T) {
 func TestCreateBookValidation(t *testing.T) {
 	router, _ := newTestRouter(t)
 
-	rec := doRequest(t, router, http.MethodPost, "/books", `{"title":"No Author"}`)
+	rec := doRequest(t, router, http.MethodPost, "/books", `{"title":"No Author"}`, map[string]string{"Authorization": "Bearer 1234567890"})
 
 	// Laravel-style validation contract：422 + message + errors map
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -153,7 +173,7 @@ func TestCreateBookValidation(t *testing.T) {
 func TestGetBookNotFound(t *testing.T) {
 	router, _ := newTestRouter(t)
 
-	rec := doRequest(t, router, http.MethodGet, "/books/999", "")
+	rec := doRequest(t, router, http.MethodGet, "/books/999", "", nil)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
@@ -163,7 +183,7 @@ func TestGetBookNotFound(t *testing.T) {
 func TestGetBookHandlerValidation(t *testing.T) {
 	router, _ := newTestRouter(t)
 
-	rec := doRequest(t, router, http.MethodGet, "/books/0", "")
+	rec := doRequest(t, router, http.MethodGet, "/books/0", "", nil)
 
 	// Laravel-style validation contract：422 + message + s map
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -228,7 +248,7 @@ func TestGetBookHandler(t *testing.T) {
 			router, store := newTestRouter(t)
 			tt.seed(store)
 
-			rec := doRequest(t, router, http.MethodGet, tt.path, tt.body)
+			rec := doRequest(t, router, http.MethodGet, tt.path, tt.body, nil)
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
 			}
@@ -315,7 +335,7 @@ func TestUpdateBookHandler(t *testing.T) {
 			router, store := newTestRouter(t)
 			tt.seed(store)
 
-			rec := doRequest(t, router, http.MethodPut, tt.path, tt.body)
+			rec := doRequest(t, router, http.MethodPut, tt.path, tt.body, map[string]string{"Authorization": "Bearer 1234567890"})
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
 			}
@@ -339,7 +359,7 @@ func TestUpdateBookHandler(t *testing.T) {
 func TestDeleteBookHandlerValidation(t *testing.T) {
 	router, _ := newTestRouter(t)
 
-	rec := doRequest(t, router, http.MethodDelete, "/books/0", "")
+	rec := doRequest(t, router, http.MethodDelete, "/books/0", "", map[string]string{"Authorization": "Bearer 1234567890"})
 
 	// Laravel-style validation contract：422 + message + errors map
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -396,7 +416,7 @@ func TestDeleteBookHandler(t *testing.T) {
 			router, store := newTestRouter(t)
 			tt.seed(store)
 
-			rec := doRequest(t, router, http.MethodDelete, tt.path, tt.body)
+			rec := doRequest(t, router, http.MethodDelete, tt.path, tt.body, map[string]string{"Authorization": "Bearer 1234567890"})
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
 			}

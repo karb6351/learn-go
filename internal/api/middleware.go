@@ -75,6 +75,9 @@ func ErrorHandler() gin.HandlerFunc {
 		} else if errors.As(err, &numError) {
 			// 處理 integer parse 錯，HTTP 400
 			c.JSON(http.StatusBadRequest, gin.H{"message": numError.Num + " is not a valid integer"})
+		} else if errors.Is(err, errUnauthenticated) {
+			// 處理未經過 authentication，HTTP 401
+			c.JSON(http.StatusUnauthorized, gin.H{"message": errUnauthenticated.Error()})
 		} else {
 			// 任何未捕捉/未 translate 嘅error都出 HTTP 500
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
