@@ -15,7 +15,8 @@
 - [x] 第六章：Project layout — `cmd/api` + `internal/{book,apperr,api}`，依賴一條直線 ✅
 - [x] 第七章：Pagination — `ListParams`/`Page` contract、offset 分頁、query binding + defaults、Laravel envelope ✅
 - [x] 第八章：Auth middleware — Bearer key、route group 局部上鎖、request phase、`errUnauthenticated` → 401 ✅
-- [ ] **第九章（未揀）：graceful shutdown（goroutine/channel/context 入門）/ logging / rate limit** ⬅ 下一步
+- [x] 第九章：Graceful shutdown — goroutine/channel/context 初體驗、`http.Server` + `Shutdown(ctx)`、`/slow` 實驗實證 ✅
+- [ ] **第十章（未揀）：logging / rate limit（channel 再深造）/ context 貫穿 request（`c.Request.Context()` 落到 GORM）** ⬅ 下一步
 
 ## ✅ 第五章任務（任務 1–4 完成）
 
@@ -87,6 +88,19 @@ Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而�
 - 多條件 error handling 寫完用 **truth table 過一次**（每個情況 × 應該回乜 × 實際回乜）— 靠倒模句子執 code 係會將啲括號執錯位
 - `main()` 起場失敗用 `log.Fatal(err)` — server 未起，冇 client 要靚 response，全 project 唯一「直接死」嘅位
 - SQLite = 一個 file 就係成個 DB：`sqlite3 books.db "select..."` 直讀，繞過 server 驗 persistence 係最狠嘅證據
+
+**Goroutine / Channel / Shutdown（第九章新增）**
+- Goroutine = 平工人：`go f()` 即開即走；幾 KB 起跳開百萬條都得，M:N 織落真 thread；**main 一返全員陪葬**；Gin 每個 request 一條（∴ 第一章個 map 要 mutex）
+- 對 Java：`go` 後面個 closure ≈ Runnable（份工），goroutine ≈ Thread（工人）但輕百倍，runtime scheduler ≈ ExecutorService（語言送嘅）；Java 21 virtual threads（Loom）= Java 版 goroutine
+- Concurrency（結構：同時處理緊）≠ Parallelism（執行：呢一刻真係並行，睇 core 數 scheduler 話事）— **寫 code 必須當 parallel**，interleave 係 bonus 唔係依靠（Node 承諾單線程所以唔使 lock，Go 冇承諾）
+- Channel：有型別管道，兩邊 block = 通訊兼同步一體；`<-ch` = Go 版 `await`（真瞓，零 CPU）；buffer `1` = 一格信箱 — `signal.Notify` 派信「放低就走」，冇格兼未有人接 = 封信跌落坑渠
+- `signal.Notify` 係 **subscription**（"Notify *me*"）= `process.on('SIGTERM')`；Go stdlib 異步事件一律 channel 交貨（`time.After`、`ctx.Done()`）— Node push callback，Go pull channel
+- **訂閱要喺瞓覺之前**：Notify 收埋喺 `ErrServerClosed` 分支入面 = 循環等待，機器從未通電 — SIGTERM 到門口冇人訂閱，默認即殺，graceful 全套變裝飾
+- `r.Run` 係 `http.ListenAndServe(addr, engine)` 語法糖；`gin.Engine` 本身就係 `http.Handler`（httptest 嘅 `router.ServeHTTP` 日日用緊呢個事實）；自己揸 `&http.Server{}` 先有 `Shutdown` 呢個軚盤
+- `Shutdown(ctx)` 係成個清場流程本人：**即刻**閂門 → 等 in-flight 食完 → ctx deadline 到冇情講斬線；X 秒係天花板唔係梯級（客走得快佢收得快）
+- `http.ErrServerClosed` 係收工紙唔係死因 — sentinel + `errors.Is`，「有 error 而且唔係收工紙先好死」
+- `.env`（godotenv）係 dev 便利品：load 唔到唔應該 `Fatal`（production 冇 `.env` file 係常態）— 真判官係 `API_KEY == ""` 嗰句
+- Graceful shutdown 係 test 測唔到嘅行為 — 靠實驗儀式攞證據：`/slow` endpoint + mid-flight SIGTERM，對比 curl 有冇食完成碗嘢
 
 **Auth middleware（第八章新增）**
 - Middleware factory：`Auth(key string) gin.HandlerFunc` — 收 config 回 middleware，closure 係個袋（= NestJS Guard 嘅 constructor injection，冇 DI 版）；config 旅程：env → `main`（冇 key = `log.Fatal`，唔准裸奔開張）→ `SetupRouter` → closure
