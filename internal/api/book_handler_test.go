@@ -92,6 +92,16 @@ func TestListBookHandlerValidation(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("response is not valid JSON: %v; body: %s", err, rec.Body.String())
 	}
+
+	rec = doRequest(t, router, http.MethodGet, "/books?limit=101", "")
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+	}
+
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response is not valid JSON: %v; body: %s", err, rec.Body.String())
+	}
 }
 func TestCreateBookHandler(t *testing.T) {
 	router, _ := newTestRouter(t)
