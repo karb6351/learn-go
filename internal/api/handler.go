@@ -30,16 +30,5 @@ func SetupRouter(store book.Repository, key string) *gin.Engine {
 	bookHandler := NewBookHandler(store)
 	setupBookRoutes(r, bookHandler, key)
 
-	// books := r.Group("/books")
-	// protectedBooks := books.Group("")
-	// protectedBooks.Use(Auth(key))
-	// {
-	// 	books.GET("", bookHandler.List)
-	// 	books.GET("/:id", bookHandler.Get)
-	// 	protectedBooks.POST("", bookHandler.Create)
-	// 	protectedBooks.PUT("/:id", bookHandler.Update)
-	// 	protectedBooks.DELETE("/:id", bookHandler.Delete)
-	// }
-
 	return r
 }
