@@ -70,7 +70,7 @@ func ErrorHandler() gin.HandlerFunc {
 				"errors":  errs,
 			})
 		} else if errors.As(err, &resourceNotFoundError) {
-			// 處理書本資源唔存在，HTTP 404
+			// 處理資源唔存在，HTTP 404
 			c.JSON(http.StatusNotFound, gin.H{"message": resourceNotFoundError.Error()})
 		} else if errors.As(err, &numError) {
 			// 處理 integer parse 錯，HTTP 400
