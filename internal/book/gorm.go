@@ -27,7 +27,7 @@ type GormStore struct {
 // 照住 Book struct 開／執 table。Embedded 嘅 BaseBook fields 會攤平做
 // columns（title / author / year）— 同 JSON marshal 攤平係同一個道理。
 func NewGormStore(path string) (*GormStore, error) {
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(path+"?_busy_timeout=5000&_txlock=immediate"), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
@@ -74,16 +74,26 @@ func (s *GormStore) Get(ctx context.Context, id int) (Book, error) {
 
 func (s *GormStore) Update(ctx context.Context, id int, b Book) (Book, error) {
 	var existingBook Book
-	if err := s.db.First(&existingBook, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return Book{}, &apperr.ResourceNotFoundError{Resource: "book", ID: id}
+
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 喺呢度做嘢...
+		if err := tx.First(&existingBook, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return &apperr.ResourceNotFoundError{Resource: "book", ID: id}
+			}
+			return err
 		}
+		existingBook.BaseBook = b.BaseBook
+		if err := tx.Save(&existingBook).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
 		return Book{}, err
 	}
-	existingBook.BaseBook = b.BaseBook
-	if err := s.db.Save(&existingBook).Error; err != nil {
-		return Book{}, err
-	}
+
 	return existingBook, nil
 }
 

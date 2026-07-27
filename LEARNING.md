@@ -17,7 +17,18 @@
 - [x] 第八章：Auth middleware — Bearer key、route group 局部上鎖、request phase、`errUnauthenticated` → 401 ✅
 - [x] 第九章：Graceful shutdown — goroutine/channel/context 初體驗、`http.Server` + `Shutdown(ctx)`、`/slow` 實驗實證 ✅
 - [x] 第十章：Context 貫穿 request — `ctx` 第一參數 idiom、`WithContext` 落 GORM、client 斷線實驗實證、`select` 初登場 ✅
-- [ ] **第十一章（未揀）：transaction（醫殭屍書 TOCTOU bug，ctx 已備）/ rate limit（channel 深造）/ logging** ⬅ 下一步
+- [x] 第十一章：Transaction — 殭屍書 race test 重現、`db.Transaction` 醫治、`_txlock=immediate` + `_busy_timeout` ✅
+- [ ] **第十二章（未揀）：rate limit（channel 深造）/ logging（slog + request ID）** ⬅ 下一步
+
+## ✅ 第十一章戰報（Transaction）
+
+流程完整行咗一次「先重現、後醫治、再驗收」：
+
+1. **口答熱身**：`MemoryStore.Update` 冇殭屍問題 — exclusive `Lock` + `defer Unlock` 令成段 check+write 係密封 critical section；GORM 版 `First`/`Save` 各自 atomic 但成條 sequence 冇嘢包住 = TOCTOU
+2. **重現**（`race_test.go`）：100-round 轟炸，兩條 goroutine（Update vs Delete）同時開火，invariant =「Delete 成功 ⇒ Get 必須 not found」。Round 1 即中 — 因為條罅闊成個 DB round trip，遠大過 goroutine 起跑抖動，「Delete 插喺 First/Save 中間」係自然時間表唔係罕見意外
+3. **醫治**：`db.WithContext(ctx).Transaction(closure)` — return error = rollback、return nil = commit、panic 都會 rollback（`defer` 哲學嘅 DB 版）。第一次改踩中經典陷阱：closure 入面照用 `s.db` 唔係 `tx` → transaction 開咗但入面乜都冇做，test 照紅捉到（紅 test 唔止驗 fix，仲驗你冇 fix 錯樣）
+4. **SQLite 並發兩座山**：(a) single-writer + deferred txn 讀升寫 = lock upgrade deadlock，SQLite 睇穿等冇用 → 即掟 BUSY，`_busy_timeout` 唔會被諮詢；正解 `_txlock=immediate` 開場即攞寫鎖（= `SELECT ... FOR UPDATE` 精神）。(b) `_busy_timeout=5000` 令排隊等鎖嘅人等而唔係即死。兩個參數住喺 `NewGormStore` 個 DSN — 連線設定係 store 嘅專業，唔係 caller 嘅責任
+5. **收尾題**：`Delete` 唔使 transaction — 單一 statement 天然 atomic（check 熔咗喺 `DELETE ... WHERE` 入面，`RowsAffected` 係結果回執唔係第二次 check）；跨 statement 嘅「睇完先做」先需要 transaction 圈地
 
 ## ✅ 第五章任務（任務 1–4 完成）
 
@@ -89,6 +100,19 @@ Create contract 唔綁死 ID 必須由 1、2 開始，只要求 ID 大過 0 而�
 - 多條件 error handling 寫完用 **truth table 過一次**（每個情況 × 應該回乜 × 實際回乜）— 靠倒模句子執 code 係會將啲括號執錯位
 - `main()` 起場失敗用 `log.Fatal(err)` — server 未起，冇 client 要靚 response，全 project 唯一「直接死」嘅位
 - SQLite = 一個 file 就係成個 DB：`sqlite3 books.db "select..."` 直讀，繞過 server 驗 persistence 係最狠嘅證據
+
+**Transaction / Concurrency（第十一章新增）**
+- TOCTOU 病灶 =「check 同 act 係兩個分離操作，中間有罅」；醫法係令成段 sequence atomic — in-memory 用 exclusive mutex，DB 用 transaction，同一場戰爭兩種武器
+- Race 重現率 ≈ 窗口闊度 vs 時序抖動：罅闊過 goroutine 起跑差 → 接近必中（我哋 round 1 中）；`i++` 級數嘅罅先要轟炸幾千次。「race = 好難撞」係誤解
+- Concurrency test 形態：N-round loop + `sync.WaitGroup`（`Add`/`defer Done`/`Wait` ≈ `Promise.all`）+ invariant check；goroutine 各寫自己變數、主線 `Wait()` 後先讀 = 冇 data race（WaitGroup 提供 happens-before）
+- `-race` 捉 memory data race；logical race（TOCTOU）佢唔識 — 要自己設計 invariant 去捉。兩種係唔同嘅獸
+- `db.Transaction(func(tx) error)`：return err = rollback、nil = commit、panic 照 rollback — Begin/Commit/Rollback 唔使掂（`defer unlock` 哲學嘅 DB 版）；closure 入面**必須用 `tx` 唔係 `s.db`**，一字之差 = 保護形同虛設（紅 test 捉得返）
+- 改無關嘢都可以令 concurrency bug 時隱時現（round 1 變 round 5）—「試多幾次冇事」唔係證據，穩定重現嘅 test + 邏輯推理先係
+- GORM `Save` 對有 PK 嘅 struct 出 `UPDATE`；affect 0 rows 唔係 error → fallback `INSERT` — 殭屍復活嘅出世紙（zero-value 哲學嘅 SQL 遠親）
+- SQLite single-writer：deferred txn 讀升寫撞正 pending writer = upgrade deadlock，SQLite 睇穿等冇用 → 即掟 BUSY（`_busy_timeout` 唔會被諮詢）；`_txlock=immediate` 開場攞定寫鎖（= `lockForUpdate()` 精神）先係正解，`_busy_timeout` 負責令排隊者等而唔係即死
+- 單一 SQL statement 天然 atomic — `DELETE ... WHERE` 嘅 check 熔喺 statement 入面，`RowsAffected` 係結果回執唔係第二次 check；跨 statement 先需要 transaction
+- 連線設定（DSN query params）住喺 constructor，唔係 caller — caller 話「file 喺邊」，點開係 store 嘅專業
+- Fail loud > corrupt silently：醫好前係靜靜雞出殭屍，醫好後最差都只係大聲 error + rollback，冇半桶水狀態
 
 **Context（第十章新增）**
 - **撞名陷阱**：Go `context.Context` ≠ React Context — React 嗰個係「派資料落 component 樹」（state 容器），Go 呢個係「派**停工令**落 call 樹」（警報線）；真・同款係 JS 嘅 **AbortController/AbortSignal**（`signal` 傳入 `fetch` ≈ `ctx` 傳入 function、`abort()` ≈ `cancel()`、`addEventListener('abort')` ≈ `<-ctx.Done()`）
